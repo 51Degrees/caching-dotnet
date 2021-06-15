@@ -1,0 +1,132 @@
+parameters:
+- name: targetPublishConfig # Target build configuration to publish
+  type: string
+  default: 'Release'
+- name: nugetVersion # NuGet version to use
+  type: string
+  default: 5.8.0
+- name: imageName # Name of the agent to work on
+- name: dependency # Name of the stage that this stage depends on
+
+stages:
+- stage: CreatePackages
+  dependsOn: ${{ parameters.dependency }}
+    
+  variables: 
+    - group: CertificateVariables
+    # Because we are pulling in a group, we need to define local variables 
+    # using the name/value syntax.
+    - name: RestoreBuildProjects
+      value: '**/*.sln'
+      # Projects to be run unit tests for
+    - name: TestProjects
+      value: '**/*[Tt]ests/*.csproj'
+      # Projects to be published as NuGet packages
+    - name: PublishProjects
+      value: '**/*.csproj;!**/*[Tt]ests/*.csproj'
+      # Access token for the git repository. Used by the git tag task.
+    - name: system_accesstoken
+      value: $(System.AccessToken)
+
+  jobs:
+  - job: CreatePackages
+    displayName: Create Packages
+
+    pool:
+      vmImage: ${{ parameters.imageName }}
+
+    steps:
+    # The lines below are needed to allow the pipeline access to the
+    # OAuth access token that controls write access to the git repository. 
+    # (Required for GitTag task)
+    - checkout: self
+      submodules: recursive
+      persistCredentials: true
+    # Useful snippets for debugging.
+    # List all contents of a directory:
+    #- script: |
+    #    ls -d $(System.ArtifactsDirectory)/*
+        
+    - task: NuGetToolInstaller@1
+      displayName: 'Use NuGet ${{ parameters.nugetVersion }}'
+      inputs:
+        versionSpec: ${{ parameters.nugetVersion }}
+    
+    - task: DotNetCoreCLI@2
+      displayName: Restore
+      inputs:
+        command: restore
+        projects: '$(RestoreBuildProjects)'
+    
+    - task: gittools.gitversion.gitversion-task.GitVersion@4
+      displayName: 'Determine Version Number'
+      # Give this task a name so we can use the variables it sets later. 
+      name: GitVersion
+      inputs:
+        preferBundledVersion: false
+    
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        projects: '$(RestoreBuildProjects)'
+        arguments: '--configuration ${{ parameters.targetPublishConfig }}'
+    
+    - task: DotNetCoreCLI@2
+      displayName: Test
+      inputs:
+        command: test
+        projects: '$(TestProjects)'
+        arguments: '--configuration ${{ parameters.targetPublishConfig }} --collect "Code coverage"' 
+    
+    # Index and publish symbol file to allow debugging.
+    - task: PublishSymbols@2
+      displayName: 'Publish Symbols'
+      inputs: 
+        SearchPattern: '**/bin/**/*.pdb'
+        SymbolServerType: 'TeamServices'
+        SymbolsVersion: '$(GitVersion.NuGetVersion)'
+      condition: and(succeeded(), eq('${{ parameters.targetPublishConfig }}', 'Debug'))
+    
+    # The nuget package version uses the BUILD_BUILDNUMER environment variable.
+    # This has been set by the GitVersion task above.
+    - task: DotNetCoreCLI@2
+      displayName: 'Build NuGet Package'
+      inputs:
+        command: 'pack'
+        packagesToPack: '$(PublishProjects)'
+        configurationToPack: '${{ parameters.targetPublishConfig }}'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'BUILD_BUILDNUMBER'
+        
+    # The secure file to download will be stored in the 
+    # Pipelines/Library/SecureFiles section in Azure DevOps.
+    - task: DownloadSecureFile@1
+      displayName: 'Download Code Signing Certificate'
+      name: CodeSigningCert
+      inputs:
+        secureFile: '51Degrees.mobi Code Signing Certificate.pfx'
+    
+    # Sign the Nuget package with the file downloaded previously.
+    # The password is stored in the Pipelines/Library/VariableGroups
+    # section in Azure DevOps.
+    - task: NuGetCommand@2
+      displayName: 'Sign NuGet Package'
+      inputs:
+        command: custom
+        arguments: 'sign $(System.ArtifactsDirectory)\*.nupkg -CertificatePath "$(CodeSigningCert.secureFilePath)" -CertificatePassword $(CodeSigningCertPassword) -Timestamper http://timestamp.digicert.com'
+    
+    # Add a tag to the git repository with the version number of
+    # the package that has just been published
+    - task: ATP.ATP-GitTag.GitTag.GitTag@5
+      displayName: 'Tag Repo With Version Number'
+      inputs:
+        tagUser: 'Azure DevOps'
+        tagEmail: 'CIUser@51Degrees.com'
+        tag: 'v$(GitVersion.NuGetVersion)'
+      condition: and(succeeded(), eq('${{ parameters.targetPublishConfig }}', 'Release'))
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact'
+      inputs:
+        PathtoPublish: '$(build.artifactstagingdirectory)'
+      condition: succeededOrFailed()

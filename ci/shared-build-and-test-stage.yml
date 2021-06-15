@@ -1,0 +1,53 @@
+parameters:
+- name: imageName # Name of the agent to work on.
+
+stages:
+- stage: Build_and_Test
+
+  jobs:
+  - job: Build_and_Test
+    displayName: Build and Test
+
+    pool:
+      vmImage: ${{ parameters.imageName }}
+      
+    # Configure this to run for both Debug and Release configurations
+    strategy:
+      matrix:
+        debug:
+          BuildConfiguration: Debug
+        release:
+          BuildConfiguration: Release    
+    
+    variables: 
+      RestoreBuildProjects: '**/*.sln'
+        # Projects to be run unit tests for
+      TestProjects: '**/*[Tt]ests/*.csproj'
+    
+    steps:
+    - checkout: self
+      submodules: recursive
+      persistCredentials: true
+      
+    - task: DotNetCoreCLI@2
+      displayName: Restore
+      inputs:
+        command: restore
+        projects: '$(RestoreBuildProjects)'
+    
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        projects: '$(RestoreBuildProjects)'
+        arguments: '--configuration $(BuildConfiguration)'
+    
+    - task: DotNetCoreCLI@2
+      displayName: Test
+      inputs:
+        command: test
+        projects: '$(TestProjects)'
+        arguments: '--configuration $(BuildConfiguration)'
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact'
+
