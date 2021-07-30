@@ -6,14 +6,14 @@ parameters:
   type: string
   default: 5.8.0
 - name: imageName # Name of the agent to work on
-- name: dependency # Name of the stage that this stage depends on
+- name: templates
 
 stages:
 - stage: CreatePackages
-  dependsOn: ${{ parameters.dependency }}
     
   variables: 
     - group: CertificateVariables
+    - group: CIAutomation
     # Because we are pulling in a group, we need to define local variables 
     # using the name/value syntax.
     - name: RestoreBuildProjects
@@ -29,8 +29,17 @@ stages:
       value: $(System.AccessToken)
 
   jobs:
+  - template: shared-git-version-job.yml@${{ parameters.templates }}
+    parameters:
+      imageName: ${{ parameters.imageName }}
+
   - job: CreatePackages
     displayName: Create Packages
+    dependsOn: Versioning
+    condition: and(succeeded(), ne(variables['CreatePackages'], 'Off'))
+
+    variables:
+      GitVersionNuGetVer: $[ dependencies.Versioning.outputs['SetGitVersionVars.GitVersionNuGetVer'] ]
 
     pool:
       vmImage: ${{ parameters.imageName }}
@@ -58,13 +67,6 @@ stages:
         command: restore
         projects: '$(RestoreBuildProjects)'
     
-    - task: gittools.gitversion.gitversion-task.GitVersion@4
-      displayName: 'Determine Version Number'
-      # Give this task a name so we can use the variables it sets later. 
-      name: GitVersion
-      inputs:
-        preferBundledVersion: false
-    
     - task: DotNetCoreCLI@2
       displayName: Build
       inputs:
@@ -84,7 +86,7 @@ stages:
       inputs: 
         SearchPattern: '**/bin/**/*.pdb'
         SymbolServerType: 'TeamServices'
-        SymbolsVersion: '$(GitVersion.NuGetVersion)'
+        SymbolsVersion: '$(GitVersionNuGetVer)'
       condition: and(succeeded(), eq('${{ parameters.targetPublishConfig }}', 'Debug'))
     
     # The nuget package version uses the BUILD_BUILDNUMER environment variable.
@@ -97,36 +99,21 @@ stages:
         configurationToPack: '${{ parameters.targetPublishConfig }}'
         versioningScheme: 'byEnvVar'
         versionEnvVar: 'BUILD_BUILDNUMBER'
+      env:
+        BUILD_BUILDNUMBER: $(GitVersionNuGetVer)
         
-    # The secure file to download will be stored in the 
-    # Pipelines/Library/SecureFiles section in Azure DevOps.
-    - task: DownloadSecureFile@1
-      displayName: 'Download Code Signing Certificate'
-      name: CodeSigningCert
-      inputs:
-        secureFile: '51Degrees.mobi Code Signing Certificate.pfx'
-    
-    # Sign the Nuget package with the file downloaded previously.
-    # The password is stored in the Pipelines/Library/VariableGroups
-    # section in Azure DevOps.
-    - task: NuGetCommand@2
-      displayName: 'Sign NuGet Package'
-      inputs:
-        command: custom
-        arguments: 'sign $(System.ArtifactsDirectory)\*.nupkg -CertificatePath "$(CodeSigningCert.secureFilePath)" -CertificatePassword $(CodeSigningCertPassword) -Timestamper http://timestamp.digicert.com'
-    
-    # Add a tag to the git repository with the version number of
-    # the package that has just been published
-    - task: ATP.ATP-GitTag.GitTag.GitTag@5
-      displayName: 'Tag Repo With Version Number'
-      inputs:
-        tagUser: 'Azure DevOps'
-        tagEmail: 'CIUser@51Degrees.com'
-        tag: 'v$(GitVersion.NuGetVersion)'
-      condition: and(succeeded(), eq('${{ parameters.targetPublishConfig }}', 'Release'))
+    - template: dotnet/shared-code-signing-steps.yml@${{ parameters.templates }}
+      parameters:
+        codeSigningPassword: $(CodeSigningCertPassword)
     
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact'
       inputs:
         PathtoPublish: '$(build.artifactstagingdirectory)'
       condition: succeededOrFailed()
+
+  - template: shared-git-tag-job.yml@${{ parameters.templates }}
+    parameters:
+      imageName: ${{ parameters.imageName }}
+      jobDependencies: [Versioning,CreatePackages]
+      publishConfig: '${{ parameters.targetPublishConfig }}'
