@@ -92,27 +92,15 @@ stages:
         SymbolsVersion: '$(GitVersionNuGetVer)'
       condition: and(succeeded(), eq('${{ parameters.targetPublishConfig }}', 'Debug'))
     
-    # The nuget package version uses the BUILD_BUILDNUMER environment variable.
-    # This has been set by the GitVersion task above.
-    # - task: DotNetCoreCLI@2
-    #   displayName: 'Build NuGet Package'
-    #   inputs:
-    #     command: 'pack'
-    #     packagesToPack: '$(PublishProjects)'
-    #     configurationToPack: '${{ parameters.targetPublishConfig }}'
-    #     versioningScheme: 'byEnvVar'
-    #     versionEnvVar: 'BUILD_BUILDNUMBER'
-    #     custom: '-p:Version=$(GitVersionNuGetVer)'
-    #   env:
-    #     BUILD_BUILDNUMBER: $(GitVersionNuGetVer)
-
+    # The nuget package version uses the GitVersionSemVer variable.
+    # This has been set by the GitVersion task above. 
     - task: DotNetCoreCLI@2
       displayName: 'Build NuGet Package'
       inputs:
         command: 'custom'
         projects: $(PublishProjects)
         custom: 'pack'
-        arguments: '-o $(System.ArtifactsDirectory) /p:Configuration=${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionSemVer) /p:Version=$(GitVersionSemVer)'
+        arguments: '--output $(System.ArtifactsDirectory) --configuration ${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionSemVer) /p:Version=$(GitVersionSemVer)'
 
     - template: dotnet/shared-code-signing-steps.yml@${{ parameters.templates }}
       parameters:
