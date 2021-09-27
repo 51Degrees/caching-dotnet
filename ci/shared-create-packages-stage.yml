@@ -91,18 +91,26 @@ stages:
     
     # The nuget package version uses the BUILD_BUILDNUMER environment variable.
     # This has been set by the GitVersion task above.
+    # - task: DotNetCoreCLI@2
+    #   displayName: 'Build NuGet Package'
+    #   inputs:
+    #     command: 'pack'
+    #     packagesToPack: '$(PublishProjects)'
+    #     configurationToPack: '${{ parameters.targetPublishConfig }}'
+    #     versioningScheme: 'byEnvVar'
+    #     versionEnvVar: 'BUILD_BUILDNUMBER'
+    #     custom: '-p:Version=$(GitVersionNuGetVer)'
+    #   env:
+    #     BUILD_BUILDNUMBER: $(GitVersionNuGetVer)
+
     - task: DotNetCoreCLI@2
       displayName: 'Build NuGet Package'
       inputs:
-        command: 'pack'
-        packagesToPack: '$(PublishProjects)'
-        configurationToPack: '${{ parameters.targetPublishConfig }}'
-        versioningScheme: 'byEnvVar'
-        versionEnvVar: 'BUILD_BUILDNUMBER'
-        custom: '-p:Version=$(GitVersionNuGetVer)'
-      env:
-        BUILD_BUILDNUMBER: $(GitVersionNuGetVer)
-        
+        command: 'custom'
+        projects: '$(PublishProjects)'
+        custom: 'pack'
+        arguments: '/p:Configuration=${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionNuGetVer) /p:Version=$(GitVersionNuGetVer)'
+
     - template: dotnet/shared-code-signing-steps.yml@${{ parameters.templates }}
       parameters:
         codeSigningPassword: $(CodeSigningCertPassword)
