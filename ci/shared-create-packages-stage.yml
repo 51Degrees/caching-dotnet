@@ -23,7 +23,9 @@ stages:
       value: '**/*[Tt]ests/*.csproj'
       # Projects to be published as NuGet packages
     - name: PublishProjects
-      value: '**/*.csproj;!**/*[Tt]ests/*.csproj'
+      value: |
+        **/*.csproj
+        !**/*[Tt]ests/*.csproj'
       # Access token for the git repository. Used by the git tag task.
     - name: system_accesstoken
       value: $(System.AccessToken)
@@ -40,6 +42,7 @@ stages:
 
     variables:
       GitVersionNuGetVer: $[ dependencies.Versioning.outputs['SetGitVersionVars.GitVersionNuGetVer'] ]
+      GitVersionSemVer: $[ dependencies.Versioning.outputs['SetGitVersionVars.GitVersionSemVer'] ]
 
     pool:
       vmImage: ${{ parameters.imageName }}
@@ -107,11 +110,9 @@ stages:
       displayName: 'Build NuGet Package'
       inputs:
         command: 'custom'
-        projects: |
-          **\*.csproj
-          !**\*[Tt]ests\*.csproj
+        projects: $(PublishProjects)
         custom: 'pack'
-        arguments: '-o $(System.ArtifactsDirectory) /p:Configuration=${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionNuGetVer) /p:Version=$(GitVersionNuGetVer)'
+        arguments: '-o $(System.ArtifactsDirectory) /p:Configuration=${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionSemVer) /p:Version=$(GitVersionSemVer)'
 
     - template: dotnet/shared-code-signing-steps.yml@${{ parameters.templates }}
       parameters:
