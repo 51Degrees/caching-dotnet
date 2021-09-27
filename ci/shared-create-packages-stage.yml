@@ -89,7 +89,7 @@ stages:
       inputs: 
         SearchPattern: '**/bin/**/*.pdb'
         SymbolServerType: 'TeamServices'
-        SymbolsVersion: '$(GitVersionNuGetVer)'
+        SymbolsVersion: '$(GitVersionSemVer)'
       condition: and(succeeded(), eq('${{ parameters.targetPublishConfig }}', 'Debug'))
     
     # The nuget package version uses the GitVersionSemVer variable.
