@@ -41,7 +41,7 @@ stages:
     condition: and(succeeded(), ne(variables['CreatePackages'], 'Off'))
 
     variables:
-      GitVersionNuGetVer: $[ dependencies.Versioning.outputs['SetGitVersionVars.GitVersionNuGetVer'] ]
+      GitVersionSemVer: $[ dependencies.Versioning.outputs['SetGitVersionVars.GitVersionSemVer'] ]
 
     pool:
       vmImage: ${{ parameters.imageName }}
