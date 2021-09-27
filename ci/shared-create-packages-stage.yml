@@ -99,6 +99,7 @@ stages:
         configurationToPack: '${{ parameters.targetPublishConfig }}'
         versioningScheme: 'byEnvVar'
         versionEnvVar: 'BUILD_BUILDNUMBER'
+        arguments: '-p:Version=$(GitVersionNuGetVer)'
       env:
         BUILD_BUILDNUMBER: $(GitVersionNuGetVer)
         
