@@ -107,7 +107,9 @@ stages:
       displayName: 'Build NuGet Package'
       inputs:
         command: 'custom'
-        projects: $(PublishProjects)
+        projects: |
+          **/*.csproj
+          !**/*[Tt]ests/*.csproj
         custom: 'pack'
         arguments: '/p:Configuration=${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionNuGetVer) /p:Version=$(GitVersionNuGetVer)'
 
