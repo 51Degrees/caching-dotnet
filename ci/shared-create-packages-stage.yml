@@ -71,7 +71,7 @@ stages:
       displayName: Build
       inputs:
         projects: '$(RestoreBuildProjects)'
-        arguments: '--configuration ${{ parameters.targetPublishConfig }}'
+        arguments: '--configuration ${{ parameters.targetPublishConfig }} -p:Version=$(GitVersionNuGetVer)'
     
     - task: DotNetCoreCLI@2
       displayName: Test
@@ -99,7 +99,6 @@ stages:
         configurationToPack: '${{ parameters.targetPublishConfig }}'
         versioningScheme: 'byEnvVar'
         versionEnvVar: 'BUILD_BUILDNUMBER'
-        arguments: '-p:Version=$(GitVersionNuGetVer)'
       env:
         BUILD_BUILDNUMBER: $(GitVersionNuGetVer)
         
