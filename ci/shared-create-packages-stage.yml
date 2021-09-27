@@ -108,10 +108,10 @@ stages:
       inputs:
         command: 'custom'
         projects: |
-          **/*.csproj
-          !**/*[Tt]ests/*.csproj
+          **\*.csproj
+          !**\*[Tt]ests\*.csproj
         custom: 'pack'
-        arguments: '/p:Configuration=${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionNuGetVer) /p:Version=$(GitVersionNuGetVer)'
+        arguments: '-o $(System.ArtifactsDirectory) /p:Configuration=${{ parameters.targetPublishConfig }} /p:PackageVersion=$(GitVersionNuGetVer) /p:Version=$(GitVersionNuGetVer)'
 
     - template: dotnet/shared-code-signing-steps.yml@${{ parameters.templates }}
       parameters:
