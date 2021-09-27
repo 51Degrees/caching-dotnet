@@ -42,7 +42,6 @@ stages:
 
     variables:
       GitVersionNuGetVer: $[ dependencies.Versioning.outputs['SetGitVersionVars.GitVersionNuGetVer'] ]
-      GitVersionSemVer: $[ dependencies.Versioning.outputs['SetGitVersionVars.GitVersionSemVer'] ]
 
     pool:
       vmImage: ${{ parameters.imageName }}
