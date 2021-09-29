@@ -1,11 +1,13 @@
 parameters:
+- name: stageName # Name of the stage.
 - name: imageName # Name of the agent to work on.
 - name: runTests
   type: string
   default: 'On'
   
 stages:
-- stage: Build_and_Test
+- stage: ${{ parameters.stageName }}
+  dependsOn: []
 
   jobs:
   - job: Build_and_Test
@@ -51,7 +53,3 @@ stages:
         command: test
         projects: '$(TestProjects)'
         arguments: '--configuration $(BuildConfiguration)'
-    
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact'
-
