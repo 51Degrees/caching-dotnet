@@ -3,10 +3,6 @@ trigger: none
 
 # Don't trigger for a pull request.
 pr: none
-
-# Use shared variables
-variables:
-- template: shared-variables.yml
     
 resources:
   repositories:
@@ -14,11 +10,16 @@ resources:
       type: git
       name: common-ci # Name of the actual repository
 
+# Use shared variables
+variables:
+- template: shared-variables.yml
+- template: shared-variables.yml@ciTemplates
+
 stages:
 # Build source and create packages
 - template: shared-create-packages-stage.yml
   parameters:
     nugetVersion: $(nugetVersion)
-    imageName: $(imageName)
+    imageName: $(windowsImage)
     targetPublishConfig: 'Debug'
     templates: 'ciTemplates'
