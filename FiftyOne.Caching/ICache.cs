@@ -21,6 +21,7 @@
  * ********************************************************************* */
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("FiftyOne.Caching.Tests")]
 
@@ -29,5 +30,15 @@ namespace FiftyOne.Caching
     public interface ICache<TKey, TVal> : IDisposable
     {
         TVal this[TKey key] { get; }
+
+        /// <summary>
+        /// Warm the cache with an initial set of key value pairs.
+        /// The size of the cache must be large enough to contain all
+        /// of the item in the initial collection.
+        /// </summary>
+        /// <param name="intial">
+        /// The collection to add to the cache.
+        /// </param>
+        void Warm(IEnumerable<KeyValuePair<TKey, TVal>> intial);
     }
 }
