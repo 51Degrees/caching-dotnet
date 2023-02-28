@@ -21,8 +21,6 @@
  * ********************************************************************* */
 
 
-using System.Collections.Generic;
-
 namespace FiftyOne.Caching
 {
     /// <summary>
@@ -53,15 +51,5 @@ namespace FiftyOne.Caching
         /// The value from the cache, or loader if not available.
         /// </returns>
         V this[K key, IValueLoader<K, V> loader] { get; }
-
-        /// <summary>
-        /// Warm the cache with an initial set of keys.
-        /// The size of the cache must be large enough to contain all
-        /// of the item in the initial collection.
-        /// </summary>
-        /// <param name="intial">
-        /// The collection to add to the cache.
-        /// </param>
-        void Warm(IEnumerable<K> initial);
     }
 }
