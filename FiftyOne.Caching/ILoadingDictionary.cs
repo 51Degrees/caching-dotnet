@@ -78,6 +78,9 @@ namespace FiftyOne.Caching
         /// <returns>
         /// True if the get was successful, and value was populated.
         /// </returns>
+        /// <exception cref="OperationCanceledException">
+        /// If the operation was canceled through the token.
+        /// </exception>
         bool TryGet(TKey key, CancellationToken cancellationToken, out TValue value);
     }
 }

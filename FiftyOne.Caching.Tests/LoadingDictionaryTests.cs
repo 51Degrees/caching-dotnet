@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using FiftyOne.Caching.Tests.Loaders;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using System;
@@ -18,109 +19,6 @@ namespace FiftyOne.Caching.Tests
 
         private Mock<ILogger<LoadingDictionary<string, string>>> _logger;
 
-        private class ReturnKeyLoader<T> : IValueTaskLoader<T, T>
-        {
-            private readonly int _delayMillis;
-
-            public ReturnKeyLoader() : this(0)
-            {
-
-            }
-
-            public ReturnKeyLoader(int delayMillis)
-            {
-                _delayMillis = delayMillis;
-            }
-
-            public int Calls => _calls;
-
-            public int Cancels => _cancels;
-
-            private volatile int _calls = 0;
-
-            private volatile int _cancels = 0;
-
-            public Task<T> Load(T key, CancellationToken token)
-            {
-                Console.WriteLine("loadgin...");
-                Interlocked.Increment(ref _calls);
-                if (_delayMillis > 0)
-                {
-                    return Task.Run(() =>
-                    {
-                        var start = DateTime.Now;
-                        while (DateTime.Now < start.AddMilliseconds(_delayMillis) &&
-                            token.IsCancellationRequested == false)
-                        {
-                            Thread.Sleep(1);
-                        }
-                        if (token.IsCancellationRequested)
-                        {
-                            Interlocked.Increment(ref _cancels);
-                            throw new OperationCanceledException();
-                        }
-                        return key;
-                    });
-                }
-                else
-                {
-                    return Task.FromResult(key);
-                }
-            }
-        }
-
-        private class ExceptionLoader<T> : IValueTaskLoader<T, T>
-        {
-            public int Calls { get; private set; } = 0;
-
-            private readonly string _message;
-
-            public ExceptionLoader(string message)
-            {
-                _message = message;
-            }
-
-            public Task<T> Load(T key, CancellationToken token)
-            {
-                Calls++;
-                return Task.FromException<T>(new Exception(_message));
-            }
-        }
-
-        private class UnresponsiveLoader<T> : IValueTaskLoader<T, T>
-        {
-            private Task<T> _loop = null;
-            private readonly object _lock = new object();
-            private bool _isCanceled = false;
-
-            public void Terminate()
-            {
-                _isCanceled = true;
-            }
-
-            public Task<T> Load(T key, CancellationToken token)
-            {
-                if (_loop == null)
-                {
-                    lock (_lock)
-                    {
-                        if (_loop == null)
-                        {
-                            _loop = Task.Run(() =>
-                            {
-                                while (_isCanceled == false)
-                                {
-                                    Task.Delay(10);
-                                }
-                                return key;
-                            });
-                        }
-                    }
-                }
-                return _loop;
-            }
-        }
-
         [TestInitialize]
         public void Init()
         {
@@ -128,6 +26,10 @@ namespace FiftyOne.Caching.Tests
             _logger = new Mock<ILogger<LoadingDictionary<string, string>>>();
         }
 
+        /// <summary>
+        /// Test that using the get method on an empty dictionary result in
+        /// the load method being called, and the expected value being returned.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetMiss()
         {
@@ -146,8 +48,13 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that using the TryGet method on an empty dictionary result in
+        /// the load method being called, and the expected value being returned.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetMiss()
         {
@@ -167,8 +74,14 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that using the get method on a dictionary that already contains
+        /// a value for the key does not result in the load method being called,
+        /// and the expected value being returned.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetHit()
         {
@@ -188,8 +101,14 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that using the TryGet method on a dictionary that already contains
+        /// a value for the key does not result in the load method being called,
+        /// and the expected value being returned.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetHit()
         {
@@ -210,8 +129,15 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that when multiple threads call the get method with the same
+        /// key, where the value is not already loaded, that the load method
+        /// is only called once. Also check that all the values returned are
+        /// correct.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetConcurrent()
         {
@@ -221,10 +147,11 @@ namespace FiftyOne.Caching.Tests
             var loader = new ReturnKeyLoader<string>();
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             var results = new ConcurrentDictionary<int, string>();
+            var count = 10;
 
             // Act
 
-            Parallel.For(0, 1, (i) =>
+            Parallel.For(0, count, (i) =>
             {
                 var result = dict[value, _token.Token];
                 results[i] = result;
@@ -237,8 +164,15 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(value, result.Value);
             }
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that when multiple threads call the TryGet method with the same
+        /// key, where the value is not already loaded, that the load method
+        /// is only called once. Also check that all the values returned are
+        /// correct.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetConcurrent()
         {
@@ -249,10 +183,11 @@ namespace FiftyOne.Caching.Tests
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             var successes = new ConcurrentDictionary<int, bool>();
             var results = new ConcurrentDictionary<int, string>();
+            var count = 10;
 
             // Act
 
-            Parallel.For(0, 2, (i) =>
+            Parallel.For(0, count, (i) =>
             {
                 if (dict.TryGet(value, _token.Token, out var result))
                 {
@@ -262,14 +197,21 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(2, results.Values.Count);
+            Assert.AreEqual(count, results.Values.Count);
             foreach (var result in results)
             {
                 Assert.AreEqual(value, result.Value);
             }
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that an exception in the loader is propagated to the caller,
+        /// and that the original exception is an inner exception of the
+        /// KeyNotFoundException thrown by the get method.
+        /// Also check that the result was not added to the dictionary.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetFails()
         {
@@ -297,8 +239,14 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(exception);
             Assert.IsNotNull(exception.InnerException);
             Assert.AreEqual(message, exception.InnerException.Message);
+            Assert.AreEqual(0, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that an exception in the loader is swallowed by the TryGet
+        /// method, and that false is returned.
+        /// Also check that the result was not added to the dictionary.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetFails()
         {
@@ -316,8 +264,15 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.IsFalse(success);
+            Assert.AreEqual(0, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that calling the cancellation token results in the get method
+        /// returning immediately, and not waiting for the Task to complete.
+        /// Also check that the cancellation was passed to the loader properly,
+        /// and that the correct exception is thrown.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetCancelled()
         {
@@ -335,7 +290,7 @@ namespace FiftyOne.Caching.Tests
             _token.CancelAfter(millis / 2);
             try
             {
-                var result = dict[value, _token.Token];
+                _ = dict[value, _token.Token];
             }
             catch (OperationCanceledException e)
             {
@@ -345,12 +300,18 @@ namespace FiftyOne.Caching.Tests
             Thread.Sleep(millis);
 
             // Assert
-            Console.WriteLine("checking...");
+
             Assert.IsTrue((end - start).TotalMilliseconds < millis);
             Assert.AreEqual(1, loader.Cancels);
             Assert.IsNotNull(exception);
         }
 
+        /// <summary>
+        /// Test that calling the cancellation token results in the TryGet method
+        /// returning immediately, and not waiting for the Task to complete.
+        /// Also check that the cancellation was passed to the loader properly,
+        /// and that the correct exception is thrown.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetCancelled()
         {
@@ -360,12 +321,20 @@ namespace FiftyOne.Caching.Tests
             var value = "teststring";
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            OperationCanceledException exception = null;
 
             // Act
 
             var start = DateTime.Now;
             _token.CancelAfter(millis / 2);
-            var success = dict.TryGet(value, _token.Token, out _);
+            try
+            {
+                _ = dict.TryGet(value, _token.Token, out _);
+            }
+            catch (OperationCanceledException e)
+            {
+                exception = e;
+            }
             var end = DateTime.Now;
             Thread.Sleep(millis);
 
@@ -373,9 +342,14 @@ namespace FiftyOne.Caching.Tests
 
             Assert.IsTrue((end - start).TotalMilliseconds < millis);
             Assert.AreEqual(1, loader.Cancels);
-            Assert.IsFalse(success);
+            Assert.IsNotNull(exception);
         }
 
+        /// <summary>
+        /// Test that getting values for keys that are pre-loaded in the
+        /// constructor, that the load method is never called and the correct
+        /// values are returned.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetPreloaded()
         {
@@ -401,8 +375,14 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(0, loader.Calls);
+            Assert.AreEqual(values.Count, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that getting values for keys that are pre-loaded in the
+        /// constructor, that the load method is never called and the correct
+        /// values are returned.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetPreloaded()
         {
@@ -429,8 +409,13 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(0, loader.Calls);
+            Assert.AreEqual(values.Count, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that pre-loading values does not affect normal operation of
+        /// the loader.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetNotPreloaded()
         {
@@ -449,17 +434,21 @@ namespace FiftyOne.Caching.Tests
 
             foreach (var value in values)
             {
-                var result = dict[value.Key, _token.Token];
-                Assert.AreEqual(value.Value, result);
+                _ = dict[value.Key, _token.Token];
             }
-            var result2 = dict["four", _token.Token];
+            var result = dict["four", _token.Token];
 
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual("four", result2);
+            Assert.AreEqual("four", result);
+            Assert.AreEqual(values.Count + 1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that pre-loading values does not affect normal operation of
+        /// the loader.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetNotPreloaded()
         {
@@ -478,17 +467,16 @@ namespace FiftyOne.Caching.Tests
 
             foreach (var value in values)
             {
-                var success = dict.TryGet(value.Key, _token.Token, out var result);
-                Assert.IsTrue(success);
-                Assert.AreEqual(value.Value, result);
+                _ = dict.TryGet(value.Key, _token.Token, out _);
             }
-            var success2 = dict.TryGet("four", _token.Token, out var result2);
+            var success = dict.TryGet("four", _token.Token, out var result);
 
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
-            Assert.IsTrue(success2);
-            Assert.AreEqual("four", result2);
+            Assert.IsTrue(success);
+            Assert.AreEqual("four", result);
+            Assert.AreEqual(values.Count + 1, dict.Keys.Count());
         }
 
         [TestMethod]
@@ -505,7 +493,7 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < count; i++)
             {
                 Console.WriteLine(i);
                 _token.CancelAfter(millis / 2);
@@ -517,7 +505,6 @@ namespace FiftyOne.Caching.Tests
                 catch (OperationCanceledException e)
                 {
                     exception = e;
-                    Console.WriteLine("exception...");
                 }
                 Assert.IsNotNull(exception);
                 exception = null;
@@ -529,6 +516,7 @@ namespace FiftyOne.Caching.Tests
 
             Assert.AreEqual(count, loader.Calls);
             Assert.AreEqual(count, loader.Cancels);
+            Assert.AreEqual(0, dict.Keys.Count());
         }
 
         [TestMethod]
@@ -554,7 +542,7 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(count, loader.Calls);
+            Assert.AreEqual(count * 2, loader.Calls);
         }
 
         [TestMethod]
@@ -566,15 +554,26 @@ namespace FiftyOne.Caching.Tests
             var millis = 100;
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            OperationCanceledException exception = null;
             var count = 2;
 
             // Act
 
             for (int i = 0; i < count; i++)
             {
+                Console.WriteLine(i);
                 _token.CancelAfter(millis / 2);
-                var success = dict.TryGet(value, _token.Token, out _);
-                Assert.IsFalse(success);
+
+                try
+                {
+                    _ = dict.TryGet(value, _token.Token, out _);
+                }
+                catch (OperationCanceledException e)
+                {
+                    exception = e;
+                }
+                Assert.IsNotNull(exception);
+                exception = null;
                 Thread.Sleep(millis);
                 _token = new CancellationTokenSource();
             }
@@ -583,6 +582,7 @@ namespace FiftyOne.Caching.Tests
 
             Assert.AreEqual(count, loader.Calls);
             Assert.AreEqual(count, loader.Cancels);
+            Assert.AreEqual(0, dict.Keys.Count());
         }
 
         [TestMethod]
@@ -605,7 +605,7 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(count, loader.Calls);
+            Assert.AreEqual(count * 2, loader.Calls);
         }
 
         [TestMethod]
@@ -654,24 +654,63 @@ namespace FiftyOne.Caching.Tests
 
             var getter = Task.Run(() =>
             {
-                return dict.TryGet(value, _token.Token, out _);
+                _ = dict.TryGet(value, _token.Token, out _);
             });
             _token.Cancel();
             try
             {
                 getter.Wait(10);
             }
-            catch { }
+            catch (AggregateException) { }
 
             // Assert
 
             Assert.IsTrue(getter.IsCompleted);
-            Assert.IsFalse(getter.Result);
+            Assert.IsTrue(getter.IsFaulted);
             Assert.AreEqual(0, dict.Keys.Count());
 
             // Cleanup
 
             loader.Terminate();
+        }
+
+        [TestMethod]
+        public void LoadingDictionary_GetNull()
+        {
+            // Arrange
+
+            var value = "teststring";
+            var loader = new NullLoader<string, string>();
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+
+            // Act
+
+            var result = dict[value, _token.Token];
+
+            // Assert
+
+            Assert.IsNull(result);
+            Assert.AreEqual(1, loader.Calls);
+        }
+
+        [TestMethod]
+        public void LoadingDictionary_TryGetNull()
+        {
+            // Arrange
+
+            var value = "teststring";
+            var loader = new NullLoader<string, string>();
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+
+            // Act
+
+            var success = dict.TryGet(value, _token.Token, out var result);
+
+            // Assert
+
+            Assert.IsTrue(success);
+            Assert.IsNull(result);
+            Assert.AreEqual(1, loader.Calls);
         }
     }
 }

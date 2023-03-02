@@ -173,12 +173,17 @@ namespace FiftyOne.Caching
                 }
                 catch (OperationCanceledException e)
                 {
+                    // The exception was from cancellation, so re-throw.
                     throw e;
                 }
                 catch (Exception e)
                 {
+                    // The exception was not a result of cancellation, so wrap
+                    // the exception in a KeyNotFound.
                     if (e.GetType() == typeof(AggregateException) && (e as AggregateException).InnerExceptions.Count == 1)
                     {
+                        // The exception was an AggregateException thrown from
+                        // a Wait. So if there is only one, cut out the AggregateException.
                         e = e.InnerException;
                     }
                     throw new KeyNotFoundException(
@@ -220,12 +225,19 @@ namespace FiftyOne.Caching
         /// <returns>
         /// True if the get was successful, and value was populated.
         /// </returns>
+        /// <exception cref="OperationCanceledException">
+        /// If the operation was canceled through the token.
+        /// </exception>
         public bool TryGet(TKey key, CancellationToken cancellationToken, out TValue value)
         {
             try
             {
                 value = Get(key, cancellationToken);
-                return value != null;
+                return true;
+            }
+            catch (OperationCanceledException e)
+            {
+                throw e;
             }
             catch (Exception)
             {
@@ -253,22 +265,19 @@ namespace FiftyOne.Caching
             {
                 return new Lazy<Task<TValue>>(() => _loader.Load(k, cancellationToken));
             };
-            var result = _dictionary.GetOrAdd(key, load);
 
+            // First try at getting the value.
+            var result = _dictionary.GetOrAdd(key, load);
             try
             {
                 result.Value.Wait(cancellationToken);
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                Remove(key);
                 if (cancellationToken.IsCancellationRequested)
                 {
+                    Remove(key);
                     throw new OperationCanceledException(cancellationToken);
-                }
-                else
-                {
-                    throw e;
                 }
             }
 
@@ -279,6 +288,8 @@ namespace FiftyOne.Caching
             }
             else
             {
+                // The first try failed, but the operation was not canceled, 
+                // so have another go.
                 Remove(key);
                 result = _dictionary.GetOrAdd(key, load);
 
@@ -295,6 +306,8 @@ namespace FiftyOne.Caching
                     }
                     else
                     {
+                        // This time we throw the exception as there won't be
+                        // another try.
                         throw e;
                     }
                 }
@@ -306,8 +319,9 @@ namespace FiftyOne.Caching
                 }
                 else
                 {
+                    // Both tries failed, so throw a KeyNotFound.
                     Remove(key);
-                    return null;
+                    throw new KeyNotFoundException();
                 }
             }
         }
@@ -323,11 +337,6 @@ namespace FiftyOne.Caching
             {
                 _logger.LogError($"Failed to remove entry for key '{key}'.");
             }
-        }
-
-        private Task<TValue> Load(TKey key, CancellationToken cancellationToken)
-        {
-            return _loader.Load(key, cancellationToken);
         }
     }
 }
