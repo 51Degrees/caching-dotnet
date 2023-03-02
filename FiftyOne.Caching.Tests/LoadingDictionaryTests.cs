@@ -479,6 +479,11 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(values.Count + 1, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that if a call to get is canceled, that the result is
+        /// removed from the dictionary, and subsequent requests try again
+        /// instead of returning the previously failed result.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetCanceledIsRemoved()
         {
@@ -519,6 +524,11 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(0, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that if a call to get fails, that the result is
+        /// removed from the dictionary, and subsequent requests try again
+        /// instead of returning the previously failed result.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetFailedIsRemoved()
         {
@@ -543,8 +553,14 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(count * 2, loader.Calls);
+            Assert.AreEqual(0, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that if a call to TryGet is canceled, that the result is
+        /// removed from the dictionary, and subsequent requests try again
+        /// instead of returning the previously failed result.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetCanceledIsRemoved()
         {
@@ -585,6 +601,11 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(0, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that if a call to TryGet fails, that the result is
+        /// removed from the dictionary, and subsequent requests try again
+        /// instead of returning the previously failed result.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetFailedIsRemoved()
         {
@@ -606,8 +627,14 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(count * 2, loader.Calls);
+            Assert.AreEqual(0, dict.Keys.Count());
         }
 
+        /// <summary>
+        /// Test that if a load task becomes unresponsive and cannot be
+        /// canceled, that the get method still returns and the result is
+        /// removed from the dictionary.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetRemoveUnresponsive()
         {
@@ -641,6 +668,11 @@ namespace FiftyOne.Caching.Tests
             loader.Terminate();
         }
 
+        /// <summary>
+        /// Test that if a load task becomes unresponsive and cannot be
+        /// canceled, that the TryGet method still returns and the result is
+        /// removed from the dictionary.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetRemoveUnresponsive()
         {
@@ -674,6 +706,9 @@ namespace FiftyOne.Caching.Tests
             loader.Terminate();
         }
 
+        /// <summary>
+        /// Test that a null is treated as a valid value.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetNull()
         {
@@ -693,6 +728,9 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(1, loader.Calls);
         }
 
+        /// <summary>
+        /// Test that a null is treated as a valid value.
+        /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetNull()
         {
