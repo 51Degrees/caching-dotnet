@@ -500,7 +500,6 @@ namespace FiftyOne.Caching.Tests
 
             for (int i = 0; i < count; i++)
             {
-                Console.WriteLine(i);
                 _token.CancelAfter(millis / 2);
 
                 try
@@ -577,7 +576,6 @@ namespace FiftyOne.Caching.Tests
 
             for (int i = 0; i < count; i++)
             {
-                Console.WriteLine(i);
                 _token.CancelAfter(millis / 2);
 
                 try
