@@ -16,6 +16,23 @@ namespace FiftyOne.Caching
     /// is not guaranteed to only call the factory once. Hence, we wrap the
     /// Tasks in a <see cref="Lazy{T}"/>, meaning the value doesn't get
     /// evaluated until it is read.
+    /// 
+    /// Details of the use of <see cref="Lazy"/>:
+    /// Consider the scenario where two get requests are made at the same
+    /// instant, with the same key. Inside the
+    /// <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/>
+    /// method, it will first call TryGet. Both will fail to get, as the key
+    /// is not yet present. Both threads will then call TryAddInternal(key, factory(key), ...).
+    /// Only one will succeed in adding, and that result will be returned to
+    /// both threads. However, both threads will have called the factory with
+    /// the same key. If the factory directly starts a Task, it will run twice.
+    /// If we instead wrap the Task in a Lazy, the actual Task will not be
+    /// initialized until it is accessed. We know that a single result is
+    /// returned to both threads, so only one Lazy will be resolved, the other
+    /// will be lost and the Task never started.
+    /// 
+    /// This is a requirement when the load method called in the factory is
+    /// an expensive operation.
     /// </summary>
     /// <typeparam name="TKey">
     /// Type of the key.
@@ -166,7 +183,7 @@ namespace FiftyOne.Caching
         public TValue this[TKey key, CancellationToken cancellationToken] => Get(key, cancellationToken);
 
         /// <summary>
-        /// Enumeration of the keys currently loaded.
+        /// Collection of the keys currently loaded.
         /// </summary>
         public ICollection<TKey> Keys => _dictionary.Keys;
 
@@ -234,7 +251,7 @@ namespace FiftyOne.Caching
         /// <returns>
         /// Value for the key provided.
         /// </returns>
-        public TValue Get(TKey key, CancellationToken cancellationToken)
+        private TValue Get(TKey key, CancellationToken cancellationToken)
         {
             // First try at getting the task.
             var task = GetAndWait(key, cancellationToken);
@@ -268,12 +285,32 @@ namespace FiftyOne.Caching
             }
         }
 
+        /// <summary>
+        /// Get whether or not the task completed successfully.
+        /// </summary>
+        /// <param name="task">
+        /// The Task to check.
+        /// </param>
+        /// <returns>
+        /// True if the task completed, and did not throw any
+        /// exceptions.
+        /// </returns>
         private static bool GetIsCompleteSuccess(Task<TValue> task)
         {
             return task.Status == TaskStatus.RanToCompletion &&
                 task.IsFaulted == false;
         }
 
+        /// <summary>
+        /// Throw a KeyNotFoundException, including any exceptions thrown
+        /// within the failed Task.
+        /// </summary>
+        /// <param name="key">
+        /// Key which could not be loaded.
+        /// </param>
+        /// <param name="task">
+        /// Task to get any exceptions from.
+        /// </param>
         private void ThrowException(TKey key, Task<TValue> task)
         {
             // Work out the inner exception removing the aggregate exception
@@ -289,11 +326,51 @@ namespace FiftyOne.Caching
                 innerException);
         }
 
+        /// <summary>
+        /// Factory method which gets a new lazy load task to pass to the
+        /// GetOrAdd method. The task does not begin running until the
+        /// Lazy value is retrieved. This prevents duplicate Tasks from
+        /// being started when the
+        /// <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/>
+        /// method calls the
+        /// <see cref="ConcurrentDictionary{TKey, TValue}.TryAdd(TKey, TValue)"/>
+        /// method with the result of this factory.
+        /// </summary>
+        /// <param name="key">
+        /// Key to load the value for.
+        /// </param>
+        /// <param name="cancellationToken">
+        /// Cancellation passed to the Task.
+        /// </param>
+        /// <returns>
+        /// A new lazily loaded Task to load the value.
+        /// </returns>
         private Lazy<Task<TValue>> Load(TKey key, CancellationToken cancellationToken)
         {
             return new Lazy<Task<TValue>>(() => _loader.Load(key, cancellationToken), true);
         }
 
+        /// <summary>
+        /// Get the Task (either existing, or created from the factory) for the
+        /// key provided, and wait for it to complete. If the cancellation token
+        /// is canceled, the wait is also canceled, so this does not depend on 
+        /// the load method to respect the token.
+        /// If the wait is canceled, then the Task is removed from the internal
+        /// dictionary to avoid it existing there indefinitely (a second attempt
+        /// may succeed, so should be allowed).
+        /// </summary>
+        /// <param name="key">
+        /// Key to get the value Task for.
+        /// </param>
+        /// <param name="cancellationToken">
+        /// Cancellation token to pass to the load method, and the wait method.
+        /// </param>
+        /// <returns>
+        /// New or existing Task which will produce a value for the key.
+        /// </returns>
+        /// <exception cref="OperationCanceledException">
+        /// If the wait operation was canceled.
+        /// </exception>
         private Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
         {
             var result = _dictionary.GetOrAdd(
@@ -318,7 +395,9 @@ namespace FiftyOne.Caching
         /// Try to remove the key from the dictionary.
         /// In the case that removal fails, an error is logged.
         /// </summary>
-        /// <param name="key"></param>
+        /// <param name="key">
+        /// Key to remove from the internal dictionary.
+        /// </param>
         private void Remove(TKey key)
         {
             if (_dictionary.TryRemove(key, out _) == false)
