@@ -16,13 +16,17 @@ namespace FiftyOne.Caching
     /// is not guaranteed to only call the factory once. Hence, we wrap the
     /// Tasks in a <see cref="Lazy{T}"/>, meaning the value doesn't get
     /// evaluated until it is read.
+    /// It is the responsibility of the loader to handle cancellation of
+    /// its Task when instructed to by the token. If a thread is left in
+    /// an unresponsive state, it will result in failed gets for that key
+    /// until the Task responds and can be removed from the dictinoary.
     /// 
     /// Details of the use of <see cref="Lazy"/>:
     /// Consider the scenario where two get requests are made at the same
     /// instant, with the same key. Inside the
     /// <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/>
     /// method, it will first call TryGet. Both will fail to get, as the key
-    /// is not yet present. Both threads will then call TryAddInternal(key, factory(key), ...).
+    /// is not yet present. Both threads will then call ConcurrentDictionary.TryAddInternal(key, factory(key), ...).
     /// Only one will succeed in adding, and that result will be returned to
     /// both threads. However, both threads will have called the factory with
     /// the same key. If the factory directly starts a Task, it will run twice.
@@ -80,19 +84,15 @@ namespace FiftyOne.Caching
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader,
-            IEnumerable<KeyValuePair<TKey, TValue>> initial,
+            ICollection<KeyValuePair<TKey, TValue>> initial,
             int concurrencyLevel,
             int capacity)
-            : this(logger, loader, concurrencyLevel, capacity)
-        {
-            if (initial != null)
-            {
-                foreach (var pair in initial)
-                {
-                    _dictionary[pair.Key] = new Lazy<Task<TValue>>(() => Task.FromResult(pair.Value));
-                }
-            }
-        }
+            : this(
+                  logger,
+                  loader,
+                  new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(concurrencyLevel, capacity),
+                  initial)
+        { }
 
         /// <summary>
         /// Constructor.
@@ -109,8 +109,12 @@ namespace FiftyOne.Caching
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader,
-            IEnumerable<KeyValuePair<TKey, TValue>> initial)
-            : this(logger, loader, initial, Constants.DEFAULT_CONCURRENCY, Constants.DEFAULT_DICTIONARY_SIZE)
+            ICollection<KeyValuePair<TKey, TValue>> initial)
+            : this(
+                  logger,
+                  loader,
+                  new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(),
+                  initial)
         {
         }
 
@@ -135,13 +139,11 @@ namespace FiftyOne.Caching
             IValueTaskLoader<TKey, TValue> loader,
             int concurrencyLevel,
             int capacity)
-        {
-            _logger = logger;
-            _dictionary = new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(
-                concurrencyLevel,
-                capacity);
-            _loader = loader;
-        }
+            : this(
+                  logger,
+                  loader,
+                  new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(concurrencyLevel, capacity))
+        { }
 
         /// <summary>
         /// Constructor.
@@ -155,8 +157,28 @@ namespace FiftyOne.Caching
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader)
-            : this(logger, loader, null, Constants.DEFAULT_CONCURRENCY, Constants.DEFAULT_DICTIONARY_SIZE)
+            : this(
+                  logger,
+                  loader,
+                  new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>())
+        { }
+
+        private LoadingDictionary(
+            ILogger<LoadingDictionary<TKey, TValue>> logger,
+            IValueTaskLoader<TKey, TValue> loader,
+            ConcurrentDictionary<TKey, Lazy<Task<TValue>>> dictionary,
+            ICollection<KeyValuePair<TKey, TValue>> initial = null)
         {
+            _logger = logger;
+            _dictionary = dictionary;
+            _loader = loader;
+            if (initial != null)
+            {
+                foreach (var pair in initial)
+                {
+                    _dictionary[pair.Key] = new Lazy<Task<TValue>>(() => Task.FromResult(pair.Value));
+                }
+            }
         }
 
         /// <summary>
@@ -378,15 +400,7 @@ namespace FiftyOne.Caching
                 k => Load(k, cancellationToken));
             if (result.Value.IsCompleted == false)
             {
-                try
-                {
-                    result.Value.Wait(cancellationToken);
-                }
-                catch (OperationCanceledException ex)
-                {
-                    Remove(key);
-                    throw ex;
-                }
+                result.Value.Wait(cancellationToken); // todo check docs
             }
             return result.Value;
         }

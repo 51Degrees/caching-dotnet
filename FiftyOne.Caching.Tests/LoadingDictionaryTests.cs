@@ -689,8 +689,7 @@ namespace FiftyOne.Caching.Tests
 
         /// <summary>
         /// Test that if a load task becomes unresponsive and cannot be
-        /// canceled, that the get method still returns when canceled
-        /// and the Task is removed from the dictionary.
+        /// canceled, that the get method still returns when canceled.
         /// request.
         /// </summary>
         [TestMethod]
@@ -719,7 +718,6 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual(0, dict.Keys.Count());
 
             // Cleanup
 
@@ -728,8 +726,7 @@ namespace FiftyOne.Caching.Tests
 
         /// <summary>
         /// Test that if a load task becomes unresponsive and cannot be
-        /// canceled, that the get method still returns when canceled
-        /// and the Task is removed from the dictionary.
+        /// canceled, that the get method still returns when canceled.
         /// request.
         /// </summary>
         [TestMethod]
@@ -758,7 +755,6 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual(0, dict.Keys.Count());
 
             // Cleanup
 
