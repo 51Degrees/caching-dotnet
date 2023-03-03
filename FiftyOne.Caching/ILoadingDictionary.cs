@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace FiftyOne.Caching
 {
@@ -52,7 +53,7 @@ namespace FiftyOne.Caching
         /// <summary>
         /// Enumeration of the keys currently loaded.
         /// </summary>
-        IEnumerable<TKey> Keys { get; }
+        ICollection<TKey> Keys { get; }
 
         /// <summary>
         /// Check whether the key has already been loaded into the dictionary.

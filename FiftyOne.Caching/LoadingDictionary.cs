@@ -93,7 +93,7 @@ namespace FiftyOne.Caching
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader,
             IEnumerable<KeyValuePair<TKey, TValue>> initial)
-            : this(logger, loader, initial, Environment.ProcessorCount, 50000) // todo move to constant defaults
+            : this(logger, loader, initial, Constants.DEFAULT_CONCURRENCY, Constants.DEFAULT_DICTIONARY_SIZE)
         {
         }
 
@@ -138,7 +138,7 @@ namespace FiftyOne.Caching
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader)
-            : this(logger, loader, null, Environment.ProcessorCount, 50000) // todo move to constant defaults
+            : this(logger, loader, null, Constants.DEFAULT_CONCURRENCY, Constants.DEFAULT_DICTIONARY_SIZE)
         {
         }
 
@@ -163,40 +163,12 @@ namespace FiftyOne.Caching
         /// <exception cref="OperationCanceledException">
         /// If the token cancels the operation.
         /// </exception>
-        public TValue this[TKey key, CancellationToken cancellationToken]
-        {
-            get
-            {
-                try
-                {
-                    return Get(key, cancellationToken);
-                }
-                catch (OperationCanceledException e)
-                {
-                    // The exception was from cancellation, so re-throw.
-                    throw e;
-                }
-                catch (Exception e)
-                {
-                    // The exception was not a result of cancellation, so wrap
-                    // the exception in a KeyNotFound.
-                    if (e.GetType() == typeof(AggregateException) && (e as AggregateException).InnerExceptions.Count == 1)
-                    {
-                        // The exception was an AggregateException thrown from
-                        // a Wait. So if there is only one, cut out the AggregateException.
-                        e = e.InnerException;
-                    }
-                    throw new KeyNotFoundException(
-                        "An exception occurred in the loader while trying to load the value.",
-                        e);
-                }
-            }
-        }
+        public TValue this[TKey key, CancellationToken cancellationToken] => Get(key, cancellationToken);
 
         /// <summary>
         /// Enumeration of the keys currently loaded.
         /// </summary>
-        public IEnumerable<TKey> Keys => _dictionary.Keys;
+        public ICollection<TKey> Keys => _dictionary.Keys;
 
         /// <summary>
         /// Check whether the key has already been loaded into the dictionary.
@@ -228,16 +200,19 @@ namespace FiftyOne.Caching
         /// <exception cref="OperationCanceledException">
         /// If the operation was canceled through the token.
         /// </exception>
-        public bool TryGet(TKey key, CancellationToken cancellationToken, out TValue value)
+        public bool TryGet(
+            TKey key, 
+            CancellationToken cancellationToken, 
+            out TValue value)
         {
             try
             {
                 value = Get(key, cancellationToken);
                 return true;
             }
-            catch (OperationCanceledException e)
+            catch (OperationCanceledException ex)
             {
-                throw e;
+                throw ex;
             }
             catch (Exception)
             {
@@ -259,71 +234,84 @@ namespace FiftyOne.Caching
         /// <returns>
         /// Value for the key provided.
         /// </returns>
-        private TValue Get(TKey key, CancellationToken cancellationToken)
+        public TValue Get(TKey key, CancellationToken cancellationToken)
         {
-            Func<TKey, Lazy<Task<TValue>>> load = (k) =>
-            {
-                return new Lazy<Task<TValue>>(() => _loader.Load(k, cancellationToken));
-            };
+            // First try at getting the task.
+            var task = GetAndWait(key, cancellationToken);
 
-            // First try at getting the value.
-            var result = _dictionary.GetOrAdd(key, load);
-            try
+            // If the task completed and has a valid result then return.
+            if (GetIsCompleteSuccess(task))
             {
-                result.Value.Wait(cancellationToken);
-            }
-            catch (Exception)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    Remove(key);
-                    throw new OperationCanceledException(cancellationToken);
-                }
-            }
-
-            if (result.Value.Status == TaskStatus.RanToCompletion &&
-                result.Value.IsFaulted == false)
-            {
-                return result.Value.Result;
+                return task.Result;
             }
             else
             {
-                // The first try failed, but the operation was not canceled, 
-                // so have another go.
+                // Remove the key from the dictionary.
                 Remove(key);
-                result = _dictionary.GetOrAdd(key, load);
 
+                // Second try at getting the value from the task.
+                task = GetAndWait(key, cancellationToken);
+
+                // If the task completed and has a valid result then return.
+                if (GetIsCompleteSuccess(task))
+                {
+                    return task.Result;
+                }
+                else
+                {
+                    // As the second try failed remove the key and throw
+                    // and exception indicating the task 
+                    Remove(key);
+                    ThrowException(key, task);
+                    return null;
+                }
+            }
+        }
+
+        private static bool GetIsCompleteSuccess(Task<TValue> task)
+        {
+            return task.Status == TaskStatus.RanToCompletion &&
+                task.IsFaulted == false;
+        }
+
+        private void ThrowException(TKey key, Task<TValue> task)
+        {
+            // Work out the inner exception removing the aggregate exception
+            // if there is only a single exception in the aggregate.
+            var innerException = task.Exception == null ? null :
+                (task.Exception.InnerExceptions.Count == 1 ?
+                    task.Exception.InnerException :
+                    task.Exception);
+
+            throw new KeyNotFoundException(
+                $"An exception occurred in '{_loader.GetType().Name}' while " +
+                $"trying to load the value for key '{key}'", 
+                innerException);
+        }
+
+        private Lazy<Task<TValue>> Load(TKey key, CancellationToken cancellationToken)
+        {
+            return new Lazy<Task<TValue>>(() => _loader.Load(key, cancellationToken), true);
+        }
+
+        private Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
+        {
+            var result = _dictionary.GetOrAdd(
+                key,
+                k => Load(k, cancellationToken));
+            if (result.Value.IsCompleted == false)
+            {
                 try
                 {
                     result.Value.Wait(cancellationToken);
                 }
-                catch (Exception e)
+                catch (OperationCanceledException ex)
                 {
                     Remove(key);
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        throw new OperationCanceledException(cancellationToken);
-                    }
-                    else
-                    {
-                        // This time we throw the exception as there won't be
-                        // another try.
-                        throw e;
-                    }
-                }
-
-                if (result.Value.Status == TaskStatus.RanToCompletion &&
-                    result.Value.IsFaulted == false)
-                {
-                    return result.Value.Result;
-                }
-                else
-                {
-                    // Both tries failed, so throw a KeyNotFound.
-                    Remove(key);
-                    throw new KeyNotFoundException();
+                    throw ex;
                 }
             }
+            return result.Value;
         }
 
         /// <summary>

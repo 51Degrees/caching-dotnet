@@ -153,8 +153,7 @@ namespace FiftyOne.Caching.Tests
 
             Parallel.For(0, count, (i) =>
             {
-                var result = dict[value, _token.Token];
-                results[i] = result;
+                results[i] = dict[value, _token.Token];
             });
 
             // Assert
@@ -336,7 +335,7 @@ namespace FiftyOne.Caching.Tests
                 exception = e;
             }
             var end = DateTime.Now;
-            Thread.Sleep(millis);
+            Thread.Sleep(millis * 2);
 
             // Assert
 
@@ -481,11 +480,11 @@ namespace FiftyOne.Caching.Tests
 
         /// <summary>
         /// Test that if a call to get is canceled, that the result is
-        /// removed from the dictionary, and subsequent requests try again
+        /// removed from the dictionary on subsequent requests 
         /// instead of returning the previously failed result.
         /// </summary>
         [TestMethod]
-        public void LoadingDictionary_GetCanceledIsRemoved()
+        public void LoadingDictionary_GetCanceledIsNotReused()
         {
             // Arrange
 
@@ -520,7 +519,6 @@ namespace FiftyOne.Caching.Tests
 
             Assert.AreEqual(count, loader.Calls);
             Assert.AreEqual(count, loader.Cancels);
-            Assert.AreEqual(0, dict.Keys.Count());
         }
 
         /// <summary>
@@ -569,7 +567,6 @@ namespace FiftyOne.Caching.Tests
             var millis = 100;
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
-            OperationCanceledException exception = null;
             var count = 2;
 
             // Act
@@ -578,16 +575,11 @@ namespace FiftyOne.Caching.Tests
             {
                 _token.CancelAfter(millis / 2);
 
-                try
+                Assert.ThrowsException<OperationCanceledException>(() =>
                 {
                     _ = dict.TryGet(value, _token.Token, out _);
-                }
-                catch (OperationCanceledException e)
-                {
-                    exception = e;
-                }
-                Assert.IsNotNull(exception);
-                exception = null;
+                });
+
                 Thread.Sleep(millis);
                 _token = new CancellationTokenSource();
             }
@@ -596,7 +588,6 @@ namespace FiftyOne.Caching.Tests
 
             Assert.AreEqual(count, loader.Calls);
             Assert.AreEqual(count, loader.Cancels);
-            Assert.AreEqual(0, dict.Keys.Count());
         }
 
         /// <summary>
@@ -630,35 +621,36 @@ namespace FiftyOne.Caching.Tests
 
         /// <summary>
         /// Test that if a load task becomes unresponsive and cannot be
-        /// canceled, that the get method still returns and the result is
-        /// removed from the dictionary.
+        /// canceled, that the get method still returns when canceled
+        /// and the Task is removed from the dictionary.
+        /// request.
         /// </summary>
         [TestMethod]
-        public void LoadingDictionary_GetRemoveUnresponsive()
+        public void LoadingDictionary_GetUnresponsive()
         {
-            // Arrange
-
             var value = "testvalue";
             var loader = new UnresponsiveLoader<string>();
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
 
             // Act
 
-            var getter = Task.Run(() =>
-            {
-                _ = dict[value, _token.Token];
-            });
+            var getter = Task.Run(() => dict[value, _token.Token]);
             _token.Cancel();
             try
             {
-                getter.Wait(10);
+                getter.Wait(100);
+                Assert.Fail(
+                    "The prior cancel of the token should prevent getting here");
             }
-            catch (AggregateException) { }
+            catch (AggregateException ex)
+            {
+                Assert.IsTrue(ex.InnerExceptions.Count == 1);
+                Assert.IsTrue(typeof(OperationCanceledException) == ex.InnerException.GetType());
+            }
 
             // Assert
 
-            Assert.IsTrue(getter.IsCompleted);
-            Assert.IsTrue(getter.IsFaulted);
+            Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(0, dict.Keys.Count());
 
             // Cleanup
@@ -668,35 +660,36 @@ namespace FiftyOne.Caching.Tests
 
         /// <summary>
         /// Test that if a load task becomes unresponsive and cannot be
-        /// canceled, that the TryGet method still returns and the result is
-        /// removed from the dictionary.
+        /// canceled, that the get method still returns when canceled
+        /// and the Task is removed from the dictionary.
+        /// request.
         /// </summary>
         [TestMethod]
-        public void LoadingDictionary_TryGetRemoveUnresponsive()
+        public void LoadingDictionary_TryGetUnresponsive()
         {
-            // Arrange
-
             var value = "testvalue";
             var loader = new UnresponsiveLoader<string>();
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
 
             // Act
 
-            var getter = Task.Run(() =>
-            {
-                _ = dict.TryGet(value, _token.Token, out _);
-            });
+            var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
             _token.Cancel();
             try
             {
-                getter.Wait(10);
+                getter.Wait(100);
+                Assert.Fail(
+                    "The prior cancel of the token should prevent getting here");
             }
-            catch (AggregateException) { }
+            catch (AggregateException ex)
+            {
+                Assert.IsTrue(ex.InnerExceptions.Count == 1);
+                Assert.IsTrue(typeof(OperationCanceledException) == ex.InnerException.GetType());
+            }
 
             // Assert
 
-            Assert.IsTrue(getter.IsCompleted);
-            Assert.IsTrue(getter.IsFaulted);
+            Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(0, dict.Keys.Count());
 
             // Cleanup

@@ -12,37 +12,27 @@ namespace FiftyOne.Caching.Tests.Loaders
     /// be canceled using the <see cref="Terminate"/> method.
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    internal class UnresponsiveLoader<T> : IValueTaskLoader<T, T>
+    internal class UnresponsiveLoader<T> : TrackingLoaderBase<T, T>
     {
-        private Task<T> _loop = null;
-        private readonly object _lock = new object();
         private bool _isCanceled = false;
+
+        public bool ShouldRespond { get; set; } = false;
 
         public void Terminate()
         {
             _isCanceled = true;
         }
 
-        public Task<T> Load(T key, CancellationToken token)
+        protected override T GetValue(T key)
         {
-            if (_loop == null)
+            if (ShouldRespond == false)
             {
-                lock (_lock)
+                while (_isCanceled == false)
                 {
-                    if (_loop == null)
-                    {
-                        _loop = Task.Run(() =>
-                        {
-                            while (_isCanceled == false)
-                            {
-                                Task.Delay(10);
-                            }
-                            return key;
-                        });
-                    }
+                    Task.Delay(10);
                 }
             }
-            return _loop;
+            return key;
         }
     }
 }

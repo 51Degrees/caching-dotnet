@@ -32,28 +32,24 @@ namespace FiftyOne.Caching.Tests.Loaders
         public Task<TValue> Load(TKey key, CancellationToken token)
         {
             Interlocked.Increment(ref _calls);
-            if (_delayMillis > 0)
-            {
                 return Task.Run(() =>
                 {
-                    var start = DateTime.Now;
-                    while (DateTime.Now < start.AddMilliseconds(_delayMillis) &&
-                        token.IsCancellationRequested == false)
+                    if (_delayMillis > 0)
                     {
-                        Thread.Sleep(1);
-                    }
-                    if (token.IsCancellationRequested)
-                    {
-                        Interlocked.Increment(ref _cancels);
-                        throw new OperationCanceledException();
+                        var start = DateTime.Now;
+                        while (DateTime.Now < start.AddMilliseconds(_delayMillis) &&
+                            token.IsCancellationRequested == false)
+                        {
+                            Thread.Sleep(1);
+                        }
+                        if (token.IsCancellationRequested)
+                        {
+                            Interlocked.Increment(ref _cancels);
+                            throw new OperationCanceledException();
+                        }
                     }
                     return GetValue(key);
                 });
-            }
-            else
-            {
-                return Task.FromResult(GetValue(key));
-            }
         }
 
         public TValue Load(TKey key)
