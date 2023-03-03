@@ -139,7 +139,7 @@ namespace FiftyOne.Caching.Tests
         /// correct.
         /// </summary>
         [TestMethod]
-        public void LoadingDictionary_GetConcurrent()
+        public void LoadingDictionary_GetConcurrentHits()
         {
             // Arrange
 
@@ -167,13 +167,45 @@ namespace FiftyOne.Caching.Tests
         }
 
         /// <summary>
+        /// Test that when multiple threads call the get method with different
+        /// keys, where the values are not already loaded, all the values
+        /// returned are correct.
+        /// </summary>
+        [TestMethod]
+        public void LoadingDictionary_GetConcurrentMisses()
+        {
+            // Arrange
+
+            var loader = new ReturnKeyLoader<string>();
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            var results = new ConcurrentDictionary<int, string>();
+            var count = 10;
+
+            // Act
+
+            Parallel.For(0, count, (i) =>
+            {
+                results[i] = dict[i.ToString(), _token.Token];
+            });
+
+            // Assert
+
+            for (int i = 0; i < count; i++)
+            {
+                Assert.AreEqual(i.ToString(), results[i]);
+            }
+            Assert.AreEqual(10, loader.Calls);
+            Assert.AreEqual(10, dict.Keys.Count());
+        }
+
+        /// <summary>
         /// Test that when multiple threads call the TryGet method with the same
         /// key, where the value is not already loaded, that the load method
         /// is only called once. Also check that all the values returned are
         /// correct.
         /// </summary>
         [TestMethod]
-        public void LoadingDictionary_TryGetConcurrent()
+        public void LoadingDictionary_TryGetConcurrentHits()
         {
             // Arrange
 
@@ -203,6 +235,42 @@ namespace FiftyOne.Caching.Tests
             }
             Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(1, dict.Keys.Count());
+        }
+
+        /// <summary>
+        /// Test that when multiple threads call the TryGet method with different
+        /// keys, where the values are not already loaded, all the values
+        /// returned are correct.
+        /// </summary>
+        [TestMethod]
+        public void LoadingDictionary_TryGetConcurrentMisses()
+        {
+            // Arrange
+
+            var loader = new ReturnKeyLoader<string>();
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            var results = new ConcurrentDictionary<int, string>();
+            var count = 10;
+
+            // Act
+
+            Parallel.For(0, count, (i) =>
+            {
+                if (dict.TryGet(i.ToString(), _token.Token, out var value))
+                {
+                    results[i] = value;
+
+                }
+            });
+
+            // Assert
+
+            for (int i = 0; i < count; i++)
+            {
+                Assert.AreEqual(i.ToString(), results[i]);
+            }
+            Assert.AreEqual(10, loader.Calls);
+            Assert.AreEqual(10, dict.Keys.Count());
         }
 
         /// <summary>

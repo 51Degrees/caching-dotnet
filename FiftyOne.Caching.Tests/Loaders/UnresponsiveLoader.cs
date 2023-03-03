@@ -16,8 +16,6 @@ namespace FiftyOne.Caching.Tests.Loaders
     {
         private bool _isCanceled = false;
 
-        public bool ShouldRespond { get; set; } = false;
-
         public void Terminate()
         {
             _isCanceled = true;
@@ -25,12 +23,9 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         protected override T GetValue(T key)
         {
-            if (ShouldRespond == false)
+            while (_isCanceled == false)
             {
-                while (_isCanceled == false)
-                {
-                    Task.Delay(10);
-                }
+                Task.Delay(10);
             }
             return key;
         }
