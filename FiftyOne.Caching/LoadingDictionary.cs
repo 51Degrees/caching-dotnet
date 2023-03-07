@@ -400,7 +400,21 @@ namespace FiftyOne.Caching
                 k => Load(k, cancellationToken));
             if (result.Value.IsCompleted == false)
             {
-                result.Value.Wait(cancellationToken);
+                try
+                {
+                    result.Value.Wait(cancellationToken);
+                }
+                catch (AggregateException ex)
+                {
+                    if (ex.InnerExceptions.Count == 1)
+                    {
+                        throw ex.InnerException;
+                    }
+                    else
+                    {
+                        throw ex;
+                    }
+                }
             }
             return result.Value;
         }
