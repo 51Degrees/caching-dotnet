@@ -4,7 +4,7 @@ parameters:
   default: 'Release'
 - name: nugetVersion # NuGet version to use
   type: string
-  default: 5.8.0
+  default: 6.0.3
 - name: imageName # Name of the agent to work on
 - name: templates
 

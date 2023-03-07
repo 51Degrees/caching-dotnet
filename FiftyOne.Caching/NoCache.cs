@@ -20,8 +20,6 @@
  * such notice(s) shall fulfill the requirements of that article.
  * ********************************************************************* */
 
-using System.Collections.Generic;
-
 namespace FiftyOne.Caching
 {
     /// <summary>
@@ -119,16 +117,6 @@ namespace FiftyOne.Caching
         public void Dispose()
         {
             // Nothing to dispose of
-        }
-
-        public void Warm(IEnumerable<KeyValuePair<TKey, TVal>> intial)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public void Warm(IEnumerable<TKey> keys)
-        {
-            throw new System.NotImplementedException();
         }
     }
 }

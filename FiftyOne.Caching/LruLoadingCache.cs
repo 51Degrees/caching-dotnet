@@ -22,7 +22,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -130,19 +129,6 @@ namespace FiftyOne.Caching
             _loader = loader;
         }
 
-        /// <summary>
-        /// Warm the cache with an initial set of keys.
-        /// The size of the cache must be large enough to contain all
-        /// of the item in the initial collection.
-        /// </summary>
-        /// <param name="intial">
-        /// The collection to add to the cache.
-        /// </param>
-        public void Warm(IEnumerable<K> initial)
-        {
-            Warm(initial.Select(k =>
-                new KeyValuePair<K, V>(k, _loader.Load(k))));
-        }
 
         /// <summary>
         /// Retrieves the value for key requested. If the key does not exist
