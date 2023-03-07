@@ -25,7 +25,7 @@ stages:
 - template: shared-build-and-test-stage.yml
   parameters:
     stageName: 'Windows'
-    imageName: $(windowsImage)
+    imageName: 'windows-2022' # todo use variable when changed in common-ci
     runTests: variables['RunTests']
 
 - template: shared-build-and-test-stage.yml
