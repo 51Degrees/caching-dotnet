@@ -400,7 +400,7 @@ namespace FiftyOne.Caching
                 k => Load(k, cancellationToken));
             if (result.Value.IsCompleted == false)
             {
-                result.Value.Wait(cancellationToken); // todo check docs
+                result.Value.Wait(cancellationToken);
             }
             return result.Value;
         }
