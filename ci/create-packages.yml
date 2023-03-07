@@ -22,6 +22,6 @@ stages:
 - template: shared-create-packages-stage.yml
   parameters:
     nugetVersion: $(nugetVersion)
-    imageName: $(windowsImage)
+    imageName: $(windowsImagePipeline)
     targetPublishConfig: 'Release'
     templates: 'ciTemplates'
