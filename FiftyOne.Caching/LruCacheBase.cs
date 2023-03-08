@@ -22,7 +22,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
@@ -608,33 +607,6 @@ namespace FiftyOne.Caching
         #endregion
 
         #region Public Methods
-
-        /// <summary>
-        /// Warm the cache with an initial set of key value pairs.
-        /// The size of the cache must be large enough to contain all
-        /// of the item in the initial collection.
-        /// </summary>
-        /// <param name="intial">
-        /// The collection to add to the cache.
-        /// </param>
-        public void Warm(IEnumerable<KeyValuePair<K, V>> initial)
-        {
-            int count = 0;
-            foreach (var item in initial)
-            {
-                Add(item.Key, item.Value);
-                count++;
-                if (count > CacheSize)
-                {
-                    throw new ArgumentException(
-                        nameof(initial),
-                        "The cache size is not large enough for the initial " +
-                        "data used to warm it up. Increase the cache size, " +
-                        "or warm up with less initial entries.");
-                }
-            }
-        }
-
         /// <summary>
         /// Resets the stats for the cache.
         /// </summary>

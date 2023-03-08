@@ -24,7 +24,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -135,100 +134,5 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual("1", result1);
             Assert.AreEqual("1", result2);
         }
-
-        /// <summary>
-        /// Check that warming the cache results in the cache being filled
-        /// i.e. there are no cache misses on the keys it was warmed with.
-        /// </summary>
-        [TestMethod]
-        public void LruLoadingCache_Warm()
-        {
-            var entries = new Dictionary<int, string>()
-            {
-                {1, "one" },
-                {2, "two" }
-            };
-            var loader = new Mock<IValueLoader<int, string>>();
-            var cache = new LruLoadingCache<int, string>(2, loader.Object, 1);
-
-
-            cache.Warm(entries);
-
-            var result1 = cache[1];
-            var result2 = cache[2];
-
-            Assert.AreEqual(2, cache.Requests);
-            Assert.AreEqual(0, cache.Misses);
-            Assert.AreEqual(entries[1], result1);
-            Assert.AreEqual(entries[2], result2);
-        }
-
-        /// <summary>
-        /// Check that an exception is thrown when the cache is warmed with
-        /// a collection that is larger than the size of the cache.
-        /// </summary>
-        [TestMethod]
-        public void LruLoadingCache_OverWarm()
-        {
-            var entries = new Dictionary<int, string>()
-            {
-                {1, "one" },
-                {2, "two" }
-            };
-            var loader = new Mock<IValueLoader<int, string>>();
-            var cache = new LruLoadingCache<int, string>(1, loader.Object, 1);
-
-
-            Assert.ThrowsException<ArgumentException>(() => cache.Warm(entries));
-        }
-
-        /// <summary>
-        /// Check that warming the cache results in the cache being filled
-        /// i.e. there are no cache misses on the keys it was warmed with.
-        /// </summary>
-        [TestMethod]
-        public void LruLoadingCache_WarmKeys()
-        {
-            var entries = new Dictionary<int, string>()
-            {
-                {1, "one" },
-                {2, "two" }
-            };
-            var loader = new Mock<IValueLoader<int, string>>();
-            loader.Setup(l => l.Load(It.IsAny<int>()))
-                .Returns<int>((k) => entries[k]);
-            var cache = new LruLoadingCache<int, string>(2, loader.Object, 1);
-
-            cache.Warm(entries.Keys.AsEnumerable());
-
-            var result1 = cache[1];
-            var result2 = cache[2];
-
-            Assert.AreEqual(2, cache.Requests);
-            Assert.AreEqual(0, cache.Misses);
-            Assert.AreEqual(entries[1], result1);
-            Assert.AreEqual(entries[2], result2);
-        }
-
-        /// <summary>
-        /// Check that an exception is thrown when the cache is warmed with
-        /// a collection that is larger than the size of the cache.
-        /// </summary>
-        [TestMethod]
-        public void LruLoadingCache_OverWarmKeys()
-        {
-            var entries = new Dictionary<int, string>()
-            {
-                {1, "one" },
-                {2, "two" }
-            };
-            var loader = new Mock<IValueLoader<int, string>>();
-            loader.Setup(l => l.Load(It.IsAny<int>()))
-                .Returns<int>((k) => entries[k]);
-            var cache = new LruLoadingCache<int, string>(1, loader.Object, 1);
-
-            Assert.ThrowsException<ArgumentException>(() => cache.Warm(entries.Keys.AsEnumerable()));
-        }
     }
-
 }
