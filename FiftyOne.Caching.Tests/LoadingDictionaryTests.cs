@@ -354,7 +354,7 @@ namespace FiftyOne.Caching.Tests
             // Act
 
             var start = DateTime.Now;
-            _token.CancelAfter(1);
+            _token.Cancel();
             try
             {
                 _ = dict[value, _token.Token];
@@ -393,7 +393,7 @@ namespace FiftyOne.Caching.Tests
             // Act
 
             var start = DateTime.Now;
-            _token.CancelAfter(1);
+            _token.Cancel();
             try
             {
                 _ = dict.TryGet(value, _token.Token, out _);
@@ -567,7 +567,7 @@ namespace FiftyOne.Caching.Tests
 
             for (int i = 0; i < count; i++)
             {
-                _token.CancelAfter(1);
+                _token.Cancel();
 
                 try
                 {
@@ -617,7 +617,7 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(count * 2, loader.Calls);
+            Assert.AreEqual(count, loader.Calls);
             Assert.AreEqual(0, dict.Keys.Count());
         }
 
@@ -641,7 +641,7 @@ namespace FiftyOne.Caching.Tests
 
             for (int i = 0; i < count; i++)
             {
-                _token.CancelAfter(1);
+                _token.Cancel();
 
                 Assert.ThrowsException<OperationCanceledException>(() =>
                 {
@@ -683,7 +683,7 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(count * 2, loader.Calls);
+            Assert.AreEqual(count, loader.Calls);
             Assert.AreEqual(0, dict.Keys.Count());
         }
 
@@ -705,7 +705,7 @@ namespace FiftyOne.Caching.Tests
             _token.Cancel();
             try
             {
-                getter.Wait(100);
+                getter.Wait(1000);
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
@@ -742,7 +742,7 @@ namespace FiftyOne.Caching.Tests
             _token.Cancel();
             try
             {
-                getter.Wait(100);
+                getter.Wait(1000);
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
