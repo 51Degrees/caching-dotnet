@@ -249,9 +249,9 @@ namespace FiftyOne.Caching
                 value = Get(key, cancellationToken);
                 return true;
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException)
             {
-                throw ex;
+                throw;
             }
             catch (Exception)
             {
@@ -393,6 +393,9 @@ namespace FiftyOne.Caching
         /// <exception cref="OperationCanceledException">
         /// If the wait operation was canceled.
         /// </exception>
+        /// <exception cref="AggregateException">
+        /// If there was an exception thrown from the Task.
+        /// </exception>
         private Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
         {
             var result = _dictionary.GetOrAdd(
@@ -400,21 +403,7 @@ namespace FiftyOne.Caching
                 k => Load(k, cancellationToken));
             if (result.Value.IsCompleted == false)
             {
-                try
-                {
-                    result.Value.Wait(cancellationToken);
-                }
-                catch (AggregateException ex)
-                {
-                    if (ex.InnerExceptions.Count == 1)
-                    {
-                        throw ex.InnerException;
-                    }
-                    else
-                    {
-                        throw ex;
-                    }
-                }
+                result.Value.Wait(cancellationToken);
             }
             return result.Value;
         }
