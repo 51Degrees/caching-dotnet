@@ -290,8 +290,17 @@ namespace FiftyOne.Caching
             }
             else
             {
+                // The value is invalid (and may not have an exception in
+                // the Task) so must be removed so that future requests so
+                // that future requests get a new value instead of returning
+                // the invalid one.
                 Remove(key);
+                // If the operation has been cancelled, then throw this
+                // exception to the caller.
                 cancellationToken.ThrowIfCancellationRequested();
+                // If the operation was not cancelled, but did not succeed,
+                // return a KeyNotFoundException with the inner exception
+                // being the exception thrown by the Task (if any).
                 ThrowKeyNotFoundException(key, task);
                 // Note this never returns. It is to satisfy the compiler.
                 return null;

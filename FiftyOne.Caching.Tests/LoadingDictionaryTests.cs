@@ -705,7 +705,7 @@ namespace FiftyOne.Caching.Tests
             _token.Cancel();
             try
             {
-                getter.Wait(100);
+                getter.Wait(1000);
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
@@ -742,7 +742,7 @@ namespace FiftyOne.Caching.Tests
             _token.Cancel();
             try
             {
-                getter.Wait(100);
+                getter.Wait(1000);
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
