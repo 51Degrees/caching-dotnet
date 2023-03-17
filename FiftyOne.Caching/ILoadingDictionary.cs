@@ -48,6 +48,9 @@ namespace FiftyOne.Caching
         /// <exception cref="OperationCanceledException">
         /// If the token cancels the operation.
         /// </exception>
+        /// <exception cref="ArgumentNullException">
+        /// If the given key is null.
+        /// </exception>
         TValue this[TKey key, CancellationToken cancellationToken] { get; }
 
         /// <summary>
@@ -81,6 +84,9 @@ namespace FiftyOne.Caching
         /// </returns>
         /// <exception cref="OperationCanceledException">
         /// If the operation was canceled through the token.
+        /// </exception>
+        /// <exception cref="ArgumentNullException">
+        /// If the given key is null.
         /// </exception>
         bool TryGet(TKey key, CancellationToken cancellationToken, out TValue value);
     }

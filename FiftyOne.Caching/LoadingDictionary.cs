@@ -259,7 +259,7 @@ namespace FiftyOne.Caching
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Internal get method used by <see cref="this[TKey, CancellationToken]"/>
         /// and <see cref="TryGet(TKey, CancellationToken, out TValue)"/>.
@@ -275,35 +275,26 @@ namespace FiftyOne.Caching
         /// </returns>
         private TValue Get(TKey key, CancellationToken cancellationToken)
         {
+            if (key == null)
+            {
+                throw new ArgumentNullException(nameof(key));
+            }
             // First try at getting the task.
             var task = GetAndWait(key, cancellationToken);
 
             // If the task completed and has a valid result then return.
-            if (GetIsCompleteSuccess(task))
+            if (GetIsCompleteSuccess(task) &&
+                cancellationToken.IsCancellationRequested == false)
             {
                 return task.Result;
             }
             else
             {
-                // Remove the key from the dictionary.
                 Remove(key);
-
-                // Second try at getting the value from the task.
-                task = GetAndWait(key, cancellationToken);
-
-                // If the task completed and has a valid result then return.
-                if (GetIsCompleteSuccess(task))
-                {
-                    return task.Result;
-                }
-                else
-                {
-                    // As the second try failed remove the key and throw
-                    // and exception indicating the task 
-                    Remove(key);
-                    ThrowException(key, task);
-                    return null;
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+                ThrowKeyNotFoundException(key, task);
+                // Note this never returns. It is to satisfy the compiler.
+                return null;
             }
         }
 
@@ -333,11 +324,11 @@ namespace FiftyOne.Caching
         /// <param name="task">
         /// Task to get any exceptions from.
         /// </param>
-        private void ThrowException(TKey key, Task<TValue> task)
+        private void ThrowKeyNotFoundException(TKey key, Task<TValue> task)
         {
             // Work out the inner exception removing the aggregate exception
             // if there is only a single exception in the aggregate.
-            var innerException = task.Exception == null ? null :
+            var innerException = task == null || task.Exception == null ? null :
                 (task.Exception.InnerExceptions.Count == 1 ?
                     task.Exception.InnerException :
                     task.Exception);
@@ -398,14 +389,26 @@ namespace FiftyOne.Caching
         /// </exception>
         private Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
         {
-            var result = _dictionary.GetOrAdd(
-                key,
-                k => Load(k, cancellationToken));
-            if (result.Value.IsCompleted == false)
+            Lazy<Task<TValue>> result = null;
+            try
             {
-                result.Value.Wait(cancellationToken);
+                result = _dictionary.GetOrAdd(
+                    key,
+                    k => Load(k, cancellationToken));
+                if (result.Value.IsCompleted == false)
+                {
+                    result.Value.Wait(cancellationToken);
+                }
+                return result.Value;
             }
-            return result.Value;
+            catch(Exception)
+            {
+                Remove(key);
+                cancellationToken.ThrowIfCancellationRequested();
+                ThrowKeyNotFoundException(key, result == null ? null : result.Value);
+                // Note this never returns. It is to satisfy the compiler.
+                return null;
+            }
         }
 
         /// <summary>
