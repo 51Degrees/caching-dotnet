@@ -1,8 +1,8 @@
 [  
     {
         "Image": "ubuntu-latest",
-        "Name": "Ubuntu_x64_Release",
+        "Name": "Ubuntu_Any_CPU_Release",
         "Configuration": "Release",
-        "Arch": "x64"
+        "Arch": "Any CPU"
     }
 ]
