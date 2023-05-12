@@ -5,6 +5,6 @@ param(
     [string]$Arch = "Any CPU"
 )
 
-./dotnet/run-unit-tests.ps1 -RepoName "caching-dotnet" -ProjectDir $ProjectDir -Name $Name -Configuration $Configuration -Arch $Arch
+./dotnet/run-unit-tests.ps1 -RepoName "caching-dotnet-test" -ProjectDir $ProjectDir -Name $Name -Configuration $Configuration -Arch $Arch
 
 exit $LASTEXITCODE

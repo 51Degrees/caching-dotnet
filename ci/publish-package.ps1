@@ -6,7 +6,7 @@ param(
     [string]$ApiKey
 )
 
-./dotnet/publish-package-nuget.ps1 -RepoName "caching-dotnet" -ProjectDir $ProjectDir -Name $Name -ApiKey $ApiKey
+./dotnet/publish-package-nuget.ps1 -RepoName "caching-dotnet-test" -ProjectDir $ProjectDir -Name $Name -ApiKey $ApiKey
 
 
 exit $LASTEXITCODE
