@@ -15,4 +15,4 @@ jobs:
       build-platform: ubuntu-20.04
     secrets: 
       token: ${{ secrets.ACCESS_TOKEN }}
-      asset-keys: '{ {"ApiKey": "placeholder" }' #'{"ApiKey": "${{ secrets.NUGET_API_KEY}}"}' this secret needs to be added in 
+      asset-keys: '{"ApiKey": "placeholder" }' #'{"ApiKey": "${{ secrets.NUGET_API_KEY}}"}' this secret needs to be added in 
