@@ -8,5 +8,4 @@ param(
 
 ./dotnet/run-update-dependencies.ps1 -RepoName $RepoName -ProjectDir $Solution -Name $Name
 
-
 exit $LASTEXITCODE
