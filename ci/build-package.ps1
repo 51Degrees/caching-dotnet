@@ -1,12 +1,19 @@
 param(
     [string]$ProjectDir = ".",
-    [string]$Name = "Release_AnyCPU",
-    [string]$Configuration = "Release",
-    [string]$Arch = "Any CPU",
     [Parameter(Mandatory=$true)]
-    [string]$Version
+    [string]$RepoName,
+    [string]$Name = "Release_x64",
+    [string]$Configuration = "CoreRelease",
+    [string]$Arch = "x64",
+    [Parameter(Mandatory=$true)]
+    [string]$Version,
+    [Parameter(Mandatory=$true)]
+    [string]$Keys
+
 )
 
-./dotnet/build-package-nuget.ps1 -RepoName "caching-dotnet-test" -ProjectDir $ProjectDir -Name $Name -Configuration $Configuration -Arch $Arch -Version $Version
+
+./dotnet/build-package-nuget.ps1 -RepoName $RepoName -ProjectDir $ProjectDir -Name $Name -Configuration $Configuration -Arch $Arch -Version $Version -SolutionName "FiftyOne.Caching.sln" -CodeSigningCert $Keys['CodeSigningCert'] -CodeSigningCertPassword $Keys['CodeSigningCertPassword'] -SearchPattern $SearchPatern = "^(?!.*Test)Project\(.*csproj",
+
 
 exit $LASTEXITCODE
