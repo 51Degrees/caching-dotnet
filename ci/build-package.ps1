@@ -8,10 +8,9 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$Version,
     [Parameter(Mandatory=$true)]
-    [string]$Keys
+    [Hashtable]$Keys
 
 )
-$Keys | ConvertTo-Json 
 
 ./dotnet/build-package-nuget.ps1 -RepoName $RepoName -ProjectDir $ProjectDir -Name $Name -Configuration $Configuration -Arch $Arch -Version $Version -SolutionName "FiftyOne.Caching.sln" -CodeSigningCert $Keys['CodeSigningCert'] -CodeSigningCertPassword $Keys['CodeSigningCertPassword'] -SearchPattern $SearchPatern = "^(?!.*Test)Project\(.*csproj",
 
