@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)]
-    [string]$RepoName = "device-detection-dotnet",
+    [string]$RepoName,
     [string]$ProjectDir = ".",
     [string]$Name = "Release_x64",
     [string]$Configuration = "Release",
