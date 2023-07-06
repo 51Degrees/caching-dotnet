@@ -44,7 +44,7 @@ namespace FiftyOne.Caching
     /// <typeparam name="TValue">
     /// Type of the values stored against the keys.
     /// </typeparam>
-    public class LoadingDictionary<TKey, TValue> : ILoadingDictionary<TKey, TValue>
+    public class LoadingDictionary<TKey, TValue> : IAsyncLoadingDictionary<TKey, TValue>
         where TValue : class
     {
         /// <summary>
@@ -202,7 +202,7 @@ namespace FiftyOne.Caching
         /// <exception cref="OperationCanceledException">
         /// If the token cancels the operation.
         /// </exception>
-        public TValue this[TKey key, CancellationToken cancellationToken] => Get(key, cancellationToken);
+        public TValue this[TKey key, CancellationToken cancellationToken] => Get(key, cancellationToken).Result;
 
         /// <summary>
         /// Collection of the keys currently loaded.
@@ -246,7 +246,7 @@ namespace FiftyOne.Caching
         {
             try
             {
-                value = Get(key, cancellationToken);
+                value = Get(key, cancellationToken).Result;
                 return true;
             }
             catch (OperationCanceledException)
@@ -258,6 +258,11 @@ namespace FiftyOne.Caching
                 value = null;
                 return false;
             }
+        }
+
+        public async Task<TValue> GetAsync(TKey key, CancellationToken cancellationToken)
+        {
+            return await Get(key, cancellationToken);
         }
 
         /// <summary>
@@ -273,22 +278,18 @@ namespace FiftyOne.Caching
         /// <returns>
         /// Value for the key provided.
         /// </returns>
-        private TValue Get(TKey key, CancellationToken cancellationToken)
+        private async Task<TValue> Get(TKey key, CancellationToken cancellationToken)
         {
             if (key == null)
             {
                 throw new ArgumentNullException(nameof(key));
             }
             // First try at getting the task.
-            var task = GetAndWait(key, cancellationToken);
-
-            // If the task completed and has a valid result then return.
-            if (GetIsCompleteSuccess(task) &&
-                cancellationToken.IsCancellationRequested == false)
+            try
             {
-                return task.Result;
+                return await GetAndWait(key, cancellationToken);
             }
-            else
+            catch(Exception ex)
             {
                 // The value is invalid (and may not have an exception in
                 // the Task) so must be removed so that future requests so
@@ -301,7 +302,7 @@ namespace FiftyOne.Caching
                 // If the operation was not cancelled, but did not succeed,
                 // return a KeyNotFoundException with the inner exception
                 // being the exception thrown by the Task (if any).
-                ThrowKeyNotFoundException(key, task);
+                ThrowKeyNotFoundException(key, ex);
                 // Note this never returns. It is to satisfy the compiler.
                 return null;
             }
@@ -333,14 +334,22 @@ namespace FiftyOne.Caching
         /// <param name="task">
         /// Task to get any exceptions from.
         /// </param>
-        private void ThrowKeyNotFoundException(TKey key, Task<TValue> task)
+        private void ThrowKeyNotFoundException(TKey key, Exception ex)
         {
             // Work out the inner exception removing the aggregate exception
             // if there is only a single exception in the aggregate.
-            var innerException = task == null || task.Exception == null ? null :
-                (task.Exception.InnerExceptions.Count == 1 ?
-                    task.Exception.InnerException :
-                    task.Exception);
+            var innerException = ex;
+            if (ex is AggregateException)
+            {
+                if ((ex as AggregateException).InnerExceptions.Count == 1)
+                {
+                    innerException = ex.InnerException;
+                }
+            }
+            else if (innerException.InnerException != null)
+            {
+                innerException = innerException.InnerException;
+            }
 
             throw new KeyNotFoundException(
                 $"An exception occurred in '{_loader.GetType().Name}' while " +
@@ -396,7 +405,7 @@ namespace FiftyOne.Caching
         /// <exception cref="AggregateException">
         /// If there was an exception thrown from the Task.
         /// </exception>
-        private Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
+        private async Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
         {
             Lazy<Task<TValue>> result = null;
             try
@@ -404,17 +413,13 @@ namespace FiftyOne.Caching
                 result = _dictionary.GetOrAdd(
                     key,
                     k => Load(k, cancellationToken));
-                if (result.Value.IsCompleted == false)
-                {
-                    result.Value.Wait(cancellationToken);
-                }
-                return result.Value;
+                return await result.Value;
             }
-            catch(Exception)
+            catch(Exception ex)
             {
                 Remove(key);
                 cancellationToken.ThrowIfCancellationRequested();
-                ThrowKeyNotFoundException(key, result == null ? null : result.Value);
+                ThrowKeyNotFoundException(key, ex);
                 // Note this never returns. It is to satisfy the compiler.
                 return null;
             }
