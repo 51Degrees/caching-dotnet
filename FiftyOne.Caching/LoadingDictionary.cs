@@ -202,7 +202,7 @@ namespace FiftyOne.Caching
         /// <exception cref="OperationCanceledException">
         /// If the token cancels the operation.
         /// </exception>
-        public TValue this[TKey key, CancellationToken cancellationToken] => Get(key, cancellationToken).Result;
+        public TValue this[TKey key, CancellationToken cancellationToken] => Get(key, cancellationToken);
 
         /// <summary>
         /// Collection of the keys currently loaded.
@@ -246,7 +246,7 @@ namespace FiftyOne.Caching
         {
             try
             {
-                value = Get(key, cancellationToken).Result;
+                value = Get(key, cancellationToken);
                 return true;
             }
             catch (OperationCanceledException)
@@ -262,7 +262,19 @@ namespace FiftyOne.Caching
 
         public async Task<TValue> GetAsync(TKey key, CancellationToken cancellationToken)
         {
-            return await Get(key, cancellationToken);
+            return await GetInternal(key, cancellationToken);
+        }
+
+        private TValue Get(TKey key, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return GetInternal(key, cancellationToken).Result;
+            }
+            catch (AggregateException ex)
+            {
+                throw ex.InnerException;
+            }
         }
 
         /// <summary>
@@ -278,7 +290,7 @@ namespace FiftyOne.Caching
         /// <returns>
         /// Value for the key provided.
         /// </returns>
-        private async Task<TValue> Get(TKey key, CancellationToken cancellationToken)
+        private async Task<TValue> GetInternal(TKey key, CancellationToken cancellationToken)
         {
             if (key == null)
             {
@@ -405,7 +417,7 @@ namespace FiftyOne.Caching
         /// <exception cref="AggregateException">
         /// If there was an exception thrown from the Task.
         /// </exception>
-        private async Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
+        private Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
         {
             Lazy<Task<TValue>> result = null;
             try
@@ -413,15 +425,16 @@ namespace FiftyOne.Caching
                 result = _dictionary.GetOrAdd(
                     key,
                     k => Load(k, cancellationToken));
-                return await result.Value;
+                result.Value.Wait(cancellationToken);
+                return result.Value;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Remove(key);
                 cancellationToken.ThrowIfCancellationRequested();
                 ThrowKeyNotFoundException(key, ex);
                 // Note this never returns. It is to satisfy the compiler.
-                return null;
+                return Task.FromResult<TValue>(null);
             }
         }
 
