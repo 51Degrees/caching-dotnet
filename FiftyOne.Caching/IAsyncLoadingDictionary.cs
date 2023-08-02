@@ -27,6 +27,31 @@ namespace FiftyOne.Caching
     public interface IAsyncLoadingDictionary<TKey, TValue> : ILoadingDictionary<TKey, TValue>
         where TValue : class
     {
+
+        /// <summary>
+        /// Gets the value associated with the key, either from an existing
+        /// entry, or by loading it first.
+        /// </summary>
+        /// <param name="key">
+        /// Key in the dictionary.
+        /// </param>
+        /// <param name="cancellationToken">
+        /// Token used to cancel the load operation.
+        /// </param>
+        /// <returns>
+        /// Value for the key provided.
+        /// </returns>
+        /// <exception cref="KeyNotFoundException">
+        /// If the key was not already in the dictionary, and could not be loaded
+        /// by the loader. The exception from the loader will be the inner
+        /// exception.
+        /// </exception>
+        /// <exception cref="OperationCanceledException">
+        /// If the token cancels the operation.
+        /// </exception>
+        /// <exception cref="ArgumentNullException">
+        /// If the given key is null.
+        /// </exception>
         Task<TValue> GetAsync(TKey key, CancellationToken cancellationToken);
     }
 }
