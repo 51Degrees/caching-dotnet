@@ -665,7 +665,7 @@ namespace FiftyOne.Caching.Tests
             {
                 _token.Cancel();
 
-                Assert.ThrowsException<OperationCanceledException>(() =>
+                Assert.ThrowsException<TaskCanceledException>(() =>
                 {
                     _ = dict.TryGet(value, _token.Token, out _);
                 });
@@ -734,7 +734,7 @@ namespace FiftyOne.Caching.Tests
             catch (AggregateException ex)
             {
                 Assert.IsTrue(ex.InnerExceptions.Count == 1);
-                Assert.IsTrue(typeof(OperationCanceledException) == ex.InnerException.GetType());
+                Assert.IsTrue(typeof(TaskCanceledException) == ex.InnerException.GetType());
             }
 
             // Assert
@@ -771,7 +771,7 @@ namespace FiftyOne.Caching.Tests
             catch (AggregateException ex)
             {
                 Assert.IsTrue(ex.InnerExceptions.Count == 1);
-                Assert.IsTrue(typeof(OperationCanceledException) == ex.InnerException.GetType());
+                Assert.IsTrue(typeof(TaskCanceledException) == ex.InnerException.GetType());
             }
 
             // Assert
