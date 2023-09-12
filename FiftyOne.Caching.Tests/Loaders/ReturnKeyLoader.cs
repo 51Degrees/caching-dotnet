@@ -48,6 +48,10 @@ namespace FiftyOne.Caching.Tests.Loaders
         {
         }
 
+        public ReturnKeyLoader(int delayMillis, bool runWithToken) : base(delayMillis, runWithToken)
+        {
+        }
+
         protected override T GetValue(T key)
         {
             return key;

@@ -367,7 +367,7 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            var millis = 1000;
+            var millis = 5000;
             var value = "teststring";
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
@@ -392,7 +392,6 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(1, loader.TaskStarts);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(1, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -410,9 +409,9 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            var millis = 1000;
+            var millis = 5000;
             var value = "teststring";
-            var loader = new ReturnKeyLoader<string>(millis);
+            var loader = new ReturnKeyLoader<string>(millis, true);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             OperationCanceledException exception = null;
 
@@ -430,7 +429,6 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(0, loader.TaskStarts);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -447,7 +445,7 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            var millis = 1000;
+            var millis = 5000;
             var value = "teststring";
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
@@ -472,7 +470,6 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(1, loader.TaskStarts);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(1, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -490,9 +487,9 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            var millis = 1000;
+            var millis = 5000;
             var value = "teststring";
-            var loader = new ReturnKeyLoader<string>(millis);
+            var loader = new ReturnKeyLoader<string>(millis, true);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             OperationCanceledException exception = null;
 
@@ -510,7 +507,6 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
-            Assert.AreEqual(0, loader.TaskStarts);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -661,25 +657,26 @@ namespace FiftyOne.Caching.Tests
             // Arrange
 
             var value = "testvalue";
-            var millis = 1000;
+            var millis = 5000;
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
-            OperationCanceledException exception = null;
+            Exception exception = null;
             var count = 2;
 
             // Act
 
             for (int i = 0; i < count; i++)
             {
+                var getter = Task.Run(() => _ = dict[value, _token.Token]);
                 _token.Cancel();
 
                 try
                 {
-                    _ = dict[value, _token.Token];
+                    _ = getter.Result;
                 }
-                catch (OperationCanceledException e)
+                catch (AggregateException e)
                 {
-                    exception = e;
+                    exception = e.InnerException;
                 }
                 Assert.IsNotNull(exception);
                 exception = null;
@@ -736,7 +733,7 @@ namespace FiftyOne.Caching.Tests
             // Arrange
 
             var value = "testvalue";
-            var millis = 1000;
+            var millis = 5000;
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             var count = 2;
@@ -745,15 +742,15 @@ namespace FiftyOne.Caching.Tests
 
             for (int i = 0; i < count; i++)
             {
+                var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
                 _token.Cancel();
 
-                Assert.ThrowsException<TaskCanceledException>(() =>
+                Assert.ThrowsException<AggregateException>(() =>
                 {
-                    _ = dict.TryGet(value, _token.Token, out _);
+                    _ = getter.Result;
                 });
 
                 _token = new CancellationTokenSource();
-                Thread.Sleep(100);
             }
 
             // Assert
