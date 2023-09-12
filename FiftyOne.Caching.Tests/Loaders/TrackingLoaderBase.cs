@@ -36,9 +36,17 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         private volatile int _cancels = 0;
 
+        private volatile int _completeWaits = 0;
+
+        private volatile int _taskStarts = 0;
+
         public int Calls => _calls;
 
         public int Cancels => _cancels;
+
+        public int CompleteWaits => _completeWaits;
+
+        public int TaskStarts => _taskStarts;
 
         public TrackingLoaderBase() : this(0)
         {
@@ -56,13 +64,18 @@ namespace FiftyOne.Caching.Tests.Loaders
             Interlocked.Increment(ref _calls);
             return Task.Run(() =>
             {
+                Interlocked.Increment(ref _taskStarts);
                 if (_delayMillis > 0)
                 {
                     var start = DateTime.Now;
-                    while (DateTime.Now < start.AddMilliseconds(_delayMillis) &&
+                    while (DateTime.Now <= start.AddMilliseconds(_delayMillis) &&
                         token.IsCancellationRequested == false)
                     {
                         Thread.Sleep(1);
+                    }
+                    if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
+                    {
+                        Interlocked.Increment(ref _completeWaits);
                     }
                     if (token.IsCancellationRequested)
                     {
@@ -71,7 +84,7 @@ namespace FiftyOne.Caching.Tests.Loaders
                     }
                 }
                 return GetValue(key);
-            });
+            }, token);
         }
 
         public TValue Load(TKey key)
