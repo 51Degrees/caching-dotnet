@@ -367,15 +367,56 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            var millis = 1000;
+            var millis = 5000;
             var value = "teststring";
             var loader = new ReturnKeyLoader<string>(millis);
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            Exception exception = null;
+
+            // Act
+
+            var getter = Task.Run(() => dict[value, _token.Token]);
+            _token.Cancel();
+            try
+            {
+                getter.Wait(millis * 2);
+                Assert.Fail(
+                    "The prior cancel of the token should prevent getting here");
+            }
+            catch (AggregateException ex)
+            {
+                Assert.IsTrue(ex.InnerExceptions.Count == 1);
+                Assert.IsTrue(typeof(TaskCanceledException) == ex.InnerException.GetType());
+                exception = ex.InnerException;
+            }
+
+            // Assert
+
+            Assert.AreEqual(0, loader.CompleteWaits);
+            Assert.AreEqual(1, loader.Cancels);
+            Assert.IsNotNull(exception);
+        }
+
+        /// <summary>
+        /// Test that calling the get method with a cancellation token that
+        /// is already cancelled results in it returning immediately, and
+        /// does not even start the task.
+        /// Also check that the cancellation was passed to the loader properly,
+        /// and that the correct exception is thrown.
+        /// </summary>
+        [TestMethod]
+        public void LoadingDictionary_GetAlreadyCancelled()
+        {
+            // Arrange
+
+            var millis = 5000;
+            var value = "teststring";
+            var loader = new ReturnKeyLoader<string>(millis, true);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             OperationCanceledException exception = null;
 
             // Act
 
-            var start = DateTime.Now;
             _token.Cancel();
             try
             {
@@ -385,13 +426,11 @@ namespace FiftyOne.Caching.Tests
             {
                 exception = e;
             }
-            var end = DateTime.Now;
-            Thread.Sleep(100);
 
             // Assert
 
-            Assert.IsTrue((end - start).TotalMilliseconds < millis);
-            Assert.AreEqual(1, loader.Cancels);
+            Assert.AreEqual(0, loader.CompleteWaits);
+            Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
         }
 
@@ -406,15 +445,56 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            var millis = 1000;
+            var millis = 5000;
             var value = "teststring";
             var loader = new ReturnKeyLoader<string>(millis);
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            Exception exception = null;
+
+            // Act
+
+            var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
+            _token.Cancel();
+            try
+            {
+                getter.Wait(millis * 2);
+                Assert.Fail(
+                    "The prior cancel of the token should prevent getting here");
+            }
+            catch (AggregateException ex)
+            {
+                Assert.IsTrue(ex.InnerExceptions.Count == 1);
+                Assert.IsTrue(typeof(TaskCanceledException) == ex.InnerException.GetType());
+                exception = ex.InnerException;
+            }
+
+            // Assert
+
+            Assert.AreEqual(0, loader.CompleteWaits);
+            Assert.AreEqual(1, loader.Cancels);
+            Assert.IsNotNull(exception);
+        }
+
+        /// <summary>
+        /// Test that calling the TryGet method with a cancellation token that
+        /// is already cancelled results in it returning immediately, and
+        /// does not even start the task.
+        /// Also check that the cancellation was passed to the loader properly,
+        /// and that the correct exception is thrown.
+        /// </summary>
+        [TestMethod]
+        public void LoadingDictionary_TryGetAlreadyCancelled()
+        {
+            // Arrange
+
+            var millis = 5000;
+            var value = "teststring";
+            var loader = new ReturnKeyLoader<string>(millis, true);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             OperationCanceledException exception = null;
 
             // Act
 
-            var start = DateTime.Now;
             _token.Cancel();
             try
             {
@@ -424,13 +504,11 @@ namespace FiftyOne.Caching.Tests
             {
                 exception = e;
             }
-            var end = DateTime.Now;
-            Thread.Sleep(100);
 
             // Assert
 
-            Assert.IsTrue((end - start).TotalMilliseconds < millis);
-            Assert.AreEqual(1, loader.Cancels);
+            Assert.AreEqual(0, loader.CompleteWaits);
+            Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
         }
 
@@ -579,25 +657,26 @@ namespace FiftyOne.Caching.Tests
             // Arrange
 
             var value = "testvalue";
-            var millis = 1000;
+            var millis = 5000;
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
-            OperationCanceledException exception = null;
+            Exception exception = null;
             var count = 2;
 
             // Act
 
             for (int i = 0; i < count; i++)
             {
+                var getter = Task.Run(() => _ = dict[value, _token.Token]);
                 _token.Cancel();
 
                 try
                 {
-                    _ = dict[value, _token.Token];
+                    _ = getter.Result;
                 }
-                catch (OperationCanceledException e)
+                catch (AggregateException e)
                 {
-                    exception = e;
+                    exception = e.InnerException;
                 }
                 Assert.IsNotNull(exception);
                 exception = null;
@@ -654,7 +733,7 @@ namespace FiftyOne.Caching.Tests
             // Arrange
 
             var value = "testvalue";
-            var millis = 1000;
+            var millis = 5000;
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             var count = 2;
@@ -663,15 +742,15 @@ namespace FiftyOne.Caching.Tests
 
             for (int i = 0; i < count; i++)
             {
+                var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
                 _token.Cancel();
 
-                Assert.ThrowsException<TaskCanceledException>(() =>
+                Assert.ThrowsException<AggregateException>(() =>
                 {
-                    _ = dict.TryGet(value, _token.Token, out _);
+                    _ = getter.Result;
                 });
 
                 _token = new CancellationTokenSource();
-                Thread.Sleep(100);
             }
 
             // Assert

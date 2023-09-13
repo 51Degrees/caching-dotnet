@@ -36,20 +36,30 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         private volatile int _cancels = 0;
 
+        private volatile int _completeWaits = 0;
+
+        private volatile bool _runWithToken;
+
         public int Calls => _calls;
 
         public int Cancels => _cancels;
+
+        public int CompleteWaits => _completeWaits;
 
         public TrackingLoaderBase() : this(0)
         {
 
         }
 
-        public TrackingLoaderBase(int delayMillis)
+        public TrackingLoaderBase(int delayMillis) : this(delayMillis, false)
         {
-            _delayMillis = delayMillis;
         }
 
+        public TrackingLoaderBase(int delayMillis, bool runWithToken)
+        {
+            _delayMillis = delayMillis;
+            _runWithToken = runWithToken;
+        }
 
         public Task<TValue> Load(TKey key, CancellationToken token)
         {
@@ -59,10 +69,14 @@ namespace FiftyOne.Caching.Tests.Loaders
                 if (_delayMillis > 0)
                 {
                     var start = DateTime.Now;
-                    while (DateTime.Now < start.AddMilliseconds(_delayMillis) &&
+                    while (DateTime.Now <= start.AddMilliseconds(_delayMillis) &&
                         token.IsCancellationRequested == false)
                     {
                         Thread.Sleep(1);
+                    }
+                    if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
+                    {
+                        Interlocked.Increment(ref _completeWaits);
                     }
                     if (token.IsCancellationRequested)
                     {
@@ -71,7 +85,7 @@ namespace FiftyOne.Caching.Tests.Loaders
                     }
                 }
                 return GetValue(key);
-            });
+            }, _runWithToken ? token : new CancellationToken());
         }
 
         public TValue Load(TKey key)
