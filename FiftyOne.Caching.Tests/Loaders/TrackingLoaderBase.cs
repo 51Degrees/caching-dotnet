@@ -32,19 +32,21 @@ namespace FiftyOne.Caching.Tests.Loaders
     {
         private readonly int _delayMillis;
 
-        private volatile int _calls = 0;
+        private int _calls = 0;
 
-        private volatile int _cancels = 0;
+        private int _cancels = 0;
 
-        private volatile int _completeWaits = 0;
+        private int _completeWaits = 0;
 
-        private volatile bool _runWithToken;
+        private readonly object _countersLock = new object();
 
-        public int Calls => _calls;
+        private readonly bool _runWithToken;
 
-        public int Cancels => _cancels;
+        public int Calls { get { lock (_countersLock) { return _calls; } } }
 
-        public int CompleteWaits => _completeWaits;
+        public int Cancels { get { lock (_countersLock) { return _cancels; } } }
+
+        public int CompleteWaits { get { lock (_countersLock) { return _completeWaits; } } }
 
         public TrackingLoaderBase() : this(0)
         {
@@ -63,7 +65,9 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         public Task<TValue> Load(TKey key, CancellationToken token)
         {
-            Interlocked.Increment(ref _calls);
+            lock (_countersLock) {
+                ++_calls;
+            }
             return Task.Run(() =>
             {
                 if (_delayMillis > 0)
@@ -74,14 +78,17 @@ namespace FiftyOne.Caching.Tests.Loaders
                     {
                         Thread.Sleep(1);
                     }
-                    if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
+                    lock (_countersLock)
                     {
-                        Interlocked.Increment(ref _completeWaits);
-                    }
-                    if (token.IsCancellationRequested)
-                    {
-                        Interlocked.Increment(ref _cancels);
-                        throw new OperationCanceledException();
+                        if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
+                        {
+                            ++_completeWaits;
+                        }
+                        if (token.IsCancellationRequested)
+                        {
+                            ++_cancels;
+                            throw new OperationCanceledException();
+                        }
                     }
                 }
                 return GetValue(key);
