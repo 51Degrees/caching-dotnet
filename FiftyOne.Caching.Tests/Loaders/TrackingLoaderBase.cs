@@ -34,6 +34,8 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         private int _calls = 0;
 
+        private int _taskCalls = 0;
+
         private int _cancels = 0;
 
         private int _completeWaits = 0;
@@ -43,6 +45,8 @@ namespace FiftyOne.Caching.Tests.Loaders
         private readonly bool _runWithToken;
 
         public int Calls { get { lock (_countersLock) { return _calls; } } }
+
+        public int TaskCalls { get { lock (_countersLock) { return _taskCalls; } } }
 
         public int Cancels { get { lock (_countersLock) { return _cancels; } } }
 
@@ -70,6 +74,10 @@ namespace FiftyOne.Caching.Tests.Loaders
             }
             return Task.Run(() =>
             {
+                lock (_countersLock)
+                {
+                    ++_taskCalls;
+                }
                 if (_delayMillis > 0)
                 {
                     var start = DateTime.Now;

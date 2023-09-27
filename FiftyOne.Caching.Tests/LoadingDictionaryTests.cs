@@ -23,6 +23,7 @@
 using FiftyOne.Caching.Tests.Loaders;
 using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.VisualStudio.TestTools.UnitTesting.Logging;
 using Moq;
 using System;
 using System.Collections.Concurrent;
@@ -163,11 +164,37 @@ namespace FiftyOne.Caching.Tests
         [TestMethod]
         public void LoadingDictionary_GetConcurrentHits()
         {
+            LoadingDictionary<string, string> dict = null;
+            LoadingDictionary_GetConcurrentHits_Internal(loader => {
+                dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+                return (k, t) => dict[k, t];
+            }, _ => 1);
+            Assert.AreEqual(1, dict.Keys.Count());
+        }
+
+        /// <summary>
+        /// Test that when multiple threads call the get method with the same
+        /// key, where the value is not already loaded, that the load method
+        /// is the same amount of times. Proof of differences.
+        /// </summary>
+        [TestMethod]
+        public void LoadingDictionary_GetConcurrentHits_PlainDict()
+        {
+            LoadingDictionary_GetConcurrentHits_Internal(loader => {
+                var dict = new ConcurrentDictionary<string, string>();
+                return (k, t) => dict.GetOrAdd(k, loader.Load(k, t).Result);
+            }, n => n);
+        }
+
+        private void LoadingDictionary_GetConcurrentHits_Internal(
+            Func<ReturnKeyLoader<string>, Func<string, CancellationToken, string>> getterBuilder,
+            Func<int, int> expectedCallsCalculator)
+        {
             // Arrange
 
             var value = "teststring";
             var loader = new ReturnKeyLoader<string>();
-            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            var dictGetter = getterBuilder(loader);
             var results = new ConcurrentDictionary<int, string>();
             var count = 10;
 
@@ -175,7 +202,7 @@ namespace FiftyOne.Caching.Tests
 
             Parallel.For(0, count, (i) =>
             {
-                results[i] = dict[value, _token.Token];
+                results[i] = dictGetter(value, _token.Token);
             });
 
             // Assert
@@ -184,8 +211,65 @@ namespace FiftyOne.Caching.Tests
             {
                 Assert.AreEqual(value, result.Value);
             }
+
+            var expectedCalls = expectedCallsCalculator(count);
+            Assert.AreEqual(expectedCalls, loader.Calls);
+            Assert.AreEqual(expectedCalls, loader.TaskCalls);
+        }
+
+        [TestMethod]
+        public void LoadingDictionary_GetConcurrentHits_MidLoad()
+        {
+            // Arrange
+
+            const int baseStepMS = 150;
+            var value = "teststring";
+            var loader = new ReturnKeyLoader<string>(3 * baseStepMS);
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            var results = new ConcurrentDictionary<int, string>();
+
+            // Act
+
+            Func<string, Func<string>> BuildGetValueFunc = s =>
+            {
+                var t = _token.Token;
+                return () =>
+                {
+                    Console.WriteLine($"[{s}] Trying to get value...");
+                    try
+                    {
+                        var v = dict[value, t];
+                        Console.WriteLine($"[{s}] Value is '{v}'");
+                        return v;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[{s}] Failed to get value: {ex}");
+                        throw;
+                    }
+                };
+            };
+            var firstCallTask = Task.Run(BuildGetValueFunc("A"));
+            var firstSource = _token;
+            _ = Task.Run(() =>
+            {
+                Thread.Sleep(2 * baseStepMS);
+                firstSource.Cancel();
+                Console.WriteLine("Cancelled token for 'A'");
+            });
+
+            Thread.Sleep(baseStepMS);
+
+            _token = new CancellationTokenSource();
+            var secondCallTask = Task.Run(BuildGetValueFunc("B"));
+
+            // Assert
+
+            Assert.ThrowsException<AggregateException>(() => firstCallTask.Result);
+            Assert.ThrowsException<AggregateException>(() => secondCallTask.Result);
+
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual(1, dict.Keys.Count());
+            Assert.AreEqual(1, loader.TaskCalls);
         }
 
         /// <summary>
@@ -217,6 +301,7 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(i.ToString(), results[i]);
             }
             Assert.AreEqual(10, loader.Calls);
+            Assert.AreEqual(10, loader.TaskCalls);
             Assert.AreEqual(10, dict.Keys.Count());
         }
 
