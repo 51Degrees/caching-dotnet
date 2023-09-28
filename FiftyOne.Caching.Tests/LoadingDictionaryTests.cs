@@ -228,6 +228,7 @@ namespace FiftyOne.Caching.Tests
 
             const int baseStepMS = 150;
             var value = "teststring";
+            const int GATE_TIMEOUT_MS = 50;
             var sourceForLoader = new CancellationTokenSource();
             Func<CancellationToken, CancellationToken> tokenOverride = _ => sourceForLoader.Token;
             var loader = new ReturnKeyLoader<string>(3 * baseStepMS, tokenOverride, tokenOverride);
@@ -256,24 +257,39 @@ namespace FiftyOne.Caching.Tests
                 };
             };
 
+            Task<string> secondCallTask = null;
             var firstSource = _token;
-            loader.OnTaskStarted += _ => Task.Run(() =>
-            {
-                Thread.Sleep(2 * baseStepMS);
-                firstSource.Cancel();
-                Console.WriteLine("Cancelled token for 'A'");
-            });
+            loader.OnTaskStarted += _ => {
+                var cancellationTaskStarted = new ManualResetEventSlim(false);
+                Task.Run(() =>
+                {
+                    cancellationTaskStarted.Set();
+                    var secondGetTaskStarted = new ManualResetEventSlim(false);
+                    secondCallTask = Task.Run(() =>
+                    {
+                        secondGetTaskStarted.Set();
+                        Thread.Sleep(baseStepMS);
+
+                        _token = new CancellationTokenSource();
+                        return BuildGetValueFunc("B")();
+                    });
+                    Assert.IsTrue(secondGetTaskStarted.Wait(GATE_TIMEOUT_MS));
+                    Thread.Sleep(2 * baseStepMS);
+
+                    firstSource.Cancel();
+                    Console.WriteLine("Cancelled token for 'A'");
+
+                });
+                Assert.IsTrue(cancellationTaskStarted.Wait(GATE_TIMEOUT_MS));
+                Assert.IsNotNull(secondCallTask);
+            };
 
             var firstCallTask = Task.Run(BuildGetValueFunc("A"));
-
-            Thread.Sleep(baseStepMS);
-
-            _token = new CancellationTokenSource();
-            var secondCallTask = Task.Run(BuildGetValueFunc("B"));
 
             // Assert
 
             Assert.ThrowsException<AggregateException>(() => firstCallTask.Result);
+            Assert.IsNotNull(secondCallTask);
             Assert.AreEqual(value, secondCallTask.Result);
 
             Assert.IsTrue(
