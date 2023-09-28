@@ -71,6 +71,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -97,6 +98,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -124,6 +126,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -152,6 +155,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -343,6 +347,7 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(value, result.Value);
             }
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -379,6 +384,7 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(i.ToString(), results[i]);
             }
             Assert.AreEqual(10, loader.Calls);
+            Assert.AreEqual(10, loader.TaskCalls);
             Assert.AreEqual(10, dict.Keys.Count());
         }
 
@@ -479,6 +485,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(1, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -516,6 +524,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -557,6 +567,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(1, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -594,6 +606,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -629,6 +643,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(0, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(values.Count, dict.Keys.Count());
         }
 
@@ -663,6 +678,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(0, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(values.Count, dict.Keys.Count());
         }
 
@@ -695,6 +711,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual("four", result);
             Assert.AreEqual(values.Count + 1, dict.Keys.Count());
         }
@@ -728,6 +745,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.IsTrue(success);
             Assert.AreEqual("four", result);
             Assert.AreEqual(values.Count + 1, dict.Keys.Count());
@@ -774,6 +792,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(count, loader.Calls);
+            Assert.AreEqual(count, loader.TaskCalls);
             Assert.AreEqual(count, loader.Cancels);
         }
 
@@ -843,6 +862,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(count, loader.Calls);
+            Assert.AreEqual(count, loader.TaskCalls);
             Assert.AreEqual(count, loader.Cancels);
         }
 
@@ -906,6 +926,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
 
             // Cleanup
 
@@ -943,6 +964,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
 
             // Cleanup
 
@@ -992,6 +1014,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsTrue(success);
             Assert.IsNull(result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
         }
     }
 }
