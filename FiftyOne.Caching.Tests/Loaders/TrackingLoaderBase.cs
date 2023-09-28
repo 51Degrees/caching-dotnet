@@ -55,6 +55,8 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         private readonly Func<CancellationToken, CancellationToken> _tokenForLoading;
 
+        public event Action<TKey> OnTaskStarted;
+
         public TrackingLoaderBase() : this(0)
         {
 
@@ -114,6 +116,7 @@ namespace FiftyOne.Caching.Tests.Loaders
                 {
                     ++_taskCalls;
                 }
+                OnTaskStarted?.Invoke(key);
                 if (_delayMillis > 0)
                 {
                     var start = DateTime.Now;

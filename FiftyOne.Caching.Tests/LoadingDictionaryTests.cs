@@ -468,8 +468,8 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict[value, _token.Token]);
-            _token.Cancel();
             try
             {
                 getter.Wait(millis * 2);
@@ -550,8 +550,8 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
-            _token.Cancel();
             try
             {
                 getter.Wait(millis * 2);
@@ -770,10 +770,10 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             for (int i = 0; i < count; i++)
             {
                 var getter = Task.Run(() => _ = dict[value, _token.Token]);
-                _token.Cancel();
 
                 try
                 {
@@ -846,10 +846,10 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             for (int i = 0; i < count; i++)
             {
                 var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
-                _token.Cancel();
 
                 Assert.ThrowsException<AggregateException>(() =>
                 {
@@ -909,8 +909,8 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict[value, _token.Token]);
-            _token.Cancel();
             try
             {
                 getter.Wait(1000);
@@ -947,8 +947,8 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
-            _token.Cancel();
             try
             {
                 getter.Wait(1000);
