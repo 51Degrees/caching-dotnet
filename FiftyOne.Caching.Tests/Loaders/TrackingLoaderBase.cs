@@ -133,7 +133,10 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         public TValue Load(TKey key)
         {
-            Interlocked.Increment(ref _calls);
+            lock (_countersLock)
+            {
+                ++_calls;
+            }
             if (_delayMillis > 0)
             {
                 var start = DateTime.Now;
