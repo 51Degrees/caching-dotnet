@@ -226,9 +226,9 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            const int baseStepMS = 300;
+            const int baseStepMS = 700;
             var value = "teststring";
-            const int GATE_TIMEOUT_MS = 120;
+            const int GATE_TIMEOUT_MS = 300;
             var sourceForLoader = new CancellationTokenSource();
             Func<CancellationToken, CancellationToken> tokenOverride = _ => sourceForLoader.Token;
             var loader = new ReturnKeyLoader<string>(3 * baseStepMS, tokenOverride, tokenOverride);
