@@ -255,14 +255,16 @@ namespace FiftyOne.Caching.Tests
                     }
                 };
             };
-            var firstCallTask = Task.Run(BuildGetValueFunc("A"));
+
             var firstSource = _token;
-            _ = Task.Run(() =>
+            loader.OnTaskStarted += _ => Task.Run(() =>
             {
                 Thread.Sleep(2 * baseStepMS);
                 firstSource.Cancel();
                 Console.WriteLine("Cancelled token for 'A'");
             });
+
+            var firstCallTask = Task.Run(BuildGetValueFunc("A"));
 
             Thread.Sleep(baseStepMS);
 
@@ -273,6 +275,10 @@ namespace FiftyOne.Caching.Tests
 
             Assert.ThrowsException<AggregateException>(() => firstCallTask.Result);
             Assert.AreEqual(value, secondCallTask.Result);
+
+            Assert.IsTrue(
+                firstSource.IsCancellationRequested, 
+                $"{nameof(firstSource)} was never cancelled!");
 
             Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(1, loader.TaskCalls);
