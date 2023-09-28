@@ -214,6 +214,7 @@ namespace FiftyOne.Caching.Tests
 
             var expectedCalls = expectedCallsCalculator(count);
             Assert.AreEqual(expectedCalls, loader.Calls);
+            Assert.AreEqual(expectedCalls, loader.TaskCalls);
         }
 
         [TestMethod]
@@ -270,6 +271,7 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(value, secondCallTask.Result);
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
         }
 
         /// <summary>
@@ -301,6 +303,7 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(i.ToString(), results[i]);
             }
             Assert.AreEqual(10, loader.Calls);
+            Assert.AreEqual(10, loader.TaskCalls);
             Assert.AreEqual(10, dict.Keys.Count());
         }
 
