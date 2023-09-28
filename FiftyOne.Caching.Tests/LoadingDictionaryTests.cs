@@ -914,6 +914,9 @@ namespace FiftyOne.Caching.Tests
             try
             {
                 getter.Wait(1000);
+                Assert.IsTrue(
+                    _token.IsCancellationRequested,
+                    $"{nameof(loader.OnTaskStarted)} has not cancelled the token source.");
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
@@ -952,6 +955,9 @@ namespace FiftyOne.Caching.Tests
             try
             {
                 getter.Wait(1000);
+                Assert.IsTrue(
+                    _token.IsCancellationRequested, 
+                    $"{nameof(loader.OnTaskStarted)} has not cancelled the token source.");
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
