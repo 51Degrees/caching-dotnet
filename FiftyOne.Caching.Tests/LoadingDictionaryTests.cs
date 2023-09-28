@@ -224,7 +224,9 @@ namespace FiftyOne.Caching.Tests
 
             const int baseStepMS = 150;
             var value = "teststring";
-            var loader = new ReturnKeyLoader<string>(3 * baseStepMS);
+            var sourceForLoader = new CancellationTokenSource();
+            Func<CancellationToken, CancellationToken> tokenOverride = _ => sourceForLoader.Token;
+            var loader = new ReturnKeyLoader<string>(3 * baseStepMS, tokenOverride, tokenOverride);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             var results = new ConcurrentDictionary<int, string>();
 
@@ -266,7 +268,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.ThrowsException<AggregateException>(() => firstCallTask.Result);
-            Assert.ThrowsException<AggregateException>(() => secondCallTask.Result);
+            Assert.AreEqual(value, secondCallTask.Result);
 
             Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(1, loader.TaskCalls);

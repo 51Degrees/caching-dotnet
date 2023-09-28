@@ -20,6 +20,7 @@
  * such notice(s) shall fulfill the requirements of that article.
  * ********************************************************************* */
 
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -42,8 +43,6 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         private readonly object _countersLock = new object();
 
-        private readonly bool _runWithToken;
-
         public int Calls { get { lock (_countersLock) { return _calls; } } }
 
         public int TaskCalls { get { lock (_countersLock) { return _taskCalls; } } }
@@ -51,6 +50,10 @@ namespace FiftyOne.Caching.Tests.Loaders
         public int Cancels { get { lock (_countersLock) { return _cancels; } } }
 
         public int CompleteWaits { get { lock (_countersLock) { return _completeWaits; } } }
+
+        private readonly Func<CancellationToken, CancellationToken> _tokenForTask;
+
+        private readonly Func<CancellationToken, CancellationToken> _tokenForLoading;
 
         public TrackingLoaderBase() : this(0)
         {
@@ -61,10 +64,41 @@ namespace FiftyOne.Caching.Tests.Loaders
         {
         }
 
-        public TrackingLoaderBase(int delayMillis, bool runWithToken)
+        /// <param name="delayMillis">
+        /// Delay before result is returned in ms.
+        /// </param>
+        /// <param name="runWithToken">
+        /// Whether the canellation of the token
+        /// should cancel a task (true)
+        /// or the internal loop operation (false).
+        /// </param>
+        public TrackingLoaderBase(int delayMillis, bool runWithToken) :
+            this(
+                delayMillis,
+                runWithToken ? null : static t => new CancellationToken(),
+                runWithToken ? static t => new CancellationToken() : null)
+        { 
+        }
+
+        /// <param name="delayMillis">
+        /// Delay before result is returned in ms.
+        /// </param>
+        /// <param name="tokenForTask">
+        /// Transforms a token to be passed for task cancellation.
+        /// If is `null` or returns `null`, the token from `Load` is used.
+        /// </param>
+        /// <param name="tokenForLoading">
+        /// Transforms a token to be passed for a loop to track.
+        /// If is `null` or returns `null`, the token from `Load` is used.
+        /// </param>
+        public TrackingLoaderBase(
+            int delayMillis, 
+            Func<CancellationToken, CancellationToken> tokenForTask,
+            Func<CancellationToken, CancellationToken> tokenForLoading)
         {
             _delayMillis = delayMillis;
-            _runWithToken = runWithToken;
+            _tokenForTask = tokenForTask;
+            _tokenForLoading = tokenForLoading;
         }
 
         public Task<TValue> Load(TKey key, CancellationToken token)
@@ -72,6 +106,8 @@ namespace FiftyOne.Caching.Tests.Loaders
             lock (_countersLock) {
                 ++_calls;
             }
+            var tokenForTask = _tokenForTask?.Invoke(token) ?? token;
+            var tokenForLoading = _tokenForLoading?.Invoke(token) ?? token;
             return Task.Run(() =>
             {
                 lock (_countersLock)
@@ -82,7 +118,7 @@ namespace FiftyOne.Caching.Tests.Loaders
                 {
                     var start = DateTime.Now;
                     while (DateTime.Now <= start.AddMilliseconds(_delayMillis) &&
-                        token.IsCancellationRequested == false)
+                        tokenForLoading.IsCancellationRequested == false)
                     {
                         Thread.Sleep(1);
                     }
@@ -92,7 +128,7 @@ namespace FiftyOne.Caching.Tests.Loaders
                         {
                             ++_completeWaits;
                         }
-                        if (token.IsCancellationRequested)
+                        if (tokenForLoading.IsCancellationRequested)
                         {
                             ++_cancels;
                             throw new OperationCanceledException();
@@ -100,7 +136,7 @@ namespace FiftyOne.Caching.Tests.Loaders
                     }
                 }
                 return GetValue(key);
-            }, _runWithToken ? token : new CancellationToken());
+            }, tokenForTask);
         }
 
         public TValue Load(TKey key)
