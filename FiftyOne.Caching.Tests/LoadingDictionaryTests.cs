@@ -226,12 +226,12 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            const int baseStepMS = 700;
+            const int baseStepMS = 400;
             var value = "teststring";
-            const int GATE_TIMEOUT_MS = 300;
+            const int GATE_TIMEOUT_MS = 150;
             var sourceForLoader = new CancellationTokenSource();
             Func<CancellationToken, CancellationToken> tokenOverride = _ => sourceForLoader.Token;
-            var loader = new ReturnKeyLoader<string>(3 * baseStepMS, tokenOverride, tokenOverride);
+            var loader = new ReturnKeyLoader<string>(baseStepMS, tokenOverride, tokenOverride);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             var results = new ConcurrentDictionary<int, string>();
 
@@ -257,52 +257,42 @@ namespace FiftyOne.Caching.Tests
                 };
             };
 
-            Task<string> secondCallTask = null;
             var firstSource = _token;
+            Task<string> secondReaderTask = null;
+            var firstTokenCancelled = new ManualResetEventSlim(false);
             loader.OnTaskStarted += _ => {
                 Console.WriteLine("Loader task started.");
-                var cancellationTaskStarted = new ManualResetEventSlim(false);
-
-                Task.Run(() =>
+                var secondReaderAwoke = new ManualResetEventSlim(false);
+                secondReaderTask = Task.Run(() =>
                 {
-                    Console.WriteLine("Cancellation task started.");
-                    cancellationTaskStarted.Set();
-
-                    var secondGetTaskStarted = new ManualResetEventSlim(false);
-                    secondCallTask = Task.Run(() =>
-                    {
-                        Console.WriteLine("Second GetValue task started.");
-
-                        secondGetTaskStarted.Set();
-                        Thread.Sleep(baseStepMS);
-
-                        _token = new CancellationTokenSource();
-                        return BuildGetValueFunc("B")();
-                    });
-                    Assert.IsTrue(
-                        secondGetTaskStarted.Wait(GATE_TIMEOUT_MS),
-                        $"{nameof(secondGetTaskStarted)} not set in {GATE_TIMEOUT_MS}ms.");
-                    Thread.Sleep(2 * baseStepMS);
-
-                    firstSource.Cancel();
-                    Console.WriteLine("Cancelled token for 'A'");
+                    Console.WriteLine("Second reader task started.");
+                    secondReaderAwoke.Set();
+                    _token = new CancellationTokenSource();
+                    return BuildGetValueFunc("B")();
                 });
 
+                secondReaderAwoke.Wait(GATE_TIMEOUT_MS);
                 Assert.IsTrue(
-                    cancellationTaskStarted.Wait(GATE_TIMEOUT_MS),
-                        $"{nameof(cancellationTaskStarted)} not set in {GATE_TIMEOUT_MS}ms.");
-                Assert.IsNotNull(
-                    secondCallTask,
-                    $"{nameof(secondCallTask)} is still null.");
+                    secondReaderAwoke.IsSet,
+                    $"{nameof(secondReaderAwoke)} still not set.");
+
+                firstSource.Cancel();
+                firstTokenCancelled.Set();
+                Console.WriteLine("First reader task cancelled.");
             };
 
             var firstCallTask = Task.Run(BuildGetValueFunc("A"));
+            firstTokenCancelled.Wait(2 * GATE_TIMEOUT_MS);
+            Assert.IsTrue(
+                firstTokenCancelled.IsSet,
+                $"{nameof(firstTokenCancelled)} still not set after.");
+
 
             // Assert
 
+            Assert.IsNotNull(secondReaderTask);
             Assert.ThrowsException<AggregateException>(() => firstCallTask.Result);
-            Assert.IsNotNull(secondCallTask);
-            Assert.AreEqual(value, secondCallTask.Result);
+            Assert.AreEqual(value, secondReaderTask.Result);
 
             Assert.IsTrue(
                 firstSource.IsCancellationRequested, 
