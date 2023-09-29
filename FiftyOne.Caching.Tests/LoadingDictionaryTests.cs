@@ -260,28 +260,40 @@ namespace FiftyOne.Caching.Tests
             Task<string> secondCallTask = null;
             var firstSource = _token;
             loader.OnTaskStarted += _ => {
+                Console.WriteLine("Loader task started.");
                 var cancellationTaskStarted = new ManualResetEventSlim(false);
+
                 Task.Run(() =>
                 {
+                    Console.WriteLine("Cancellation task started.");
                     cancellationTaskStarted.Set();
+
                     var secondGetTaskStarted = new ManualResetEventSlim(false);
                     secondCallTask = Task.Run(() =>
                     {
+                        Console.WriteLine("Second GetValue task started.");
+
                         secondGetTaskStarted.Set();
                         Thread.Sleep(baseStepMS);
 
                         _token = new CancellationTokenSource();
                         return BuildGetValueFunc("B")();
                     });
-                    Assert.IsTrue(secondGetTaskStarted.Wait(GATE_TIMEOUT_MS));
+                    Assert.IsTrue(
+                        secondGetTaskStarted.Wait(GATE_TIMEOUT_MS),
+                        $"{nameof(secondGetTaskStarted)} not set in {GATE_TIMEOUT_MS}ms.");
                     Thread.Sleep(2 * baseStepMS);
 
                     firstSource.Cancel();
                     Console.WriteLine("Cancelled token for 'A'");
-
                 });
-                Assert.IsTrue(cancellationTaskStarted.Wait(GATE_TIMEOUT_MS));
-                Assert.IsNotNull(secondCallTask);
+
+                Assert.IsTrue(
+                    cancellationTaskStarted.Wait(GATE_TIMEOUT_MS),
+                        $"{nameof(cancellationTaskStarted)} not set in {GATE_TIMEOUT_MS}ms.");
+                Assert.IsNotNull(
+                    secondCallTask,
+                    $"{nameof(secondCallTask)} is still null.");
             };
 
             var firstCallTask = Task.Run(BuildGetValueFunc("A"));
