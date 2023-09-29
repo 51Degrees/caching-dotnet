@@ -226,12 +226,12 @@ namespace FiftyOne.Caching.Tests
         {
             // Arrange
 
-            const int baseStepMS = 400;
+            const int loadTimeMS = 1000;
             var value = "teststring";
-            const int GATE_TIMEOUT_MS = 150;
+            const int GATE_TIMEOUT_MS = 400;
             var sourceForLoader = new CancellationTokenSource();
             Func<CancellationToken, CancellationToken> tokenOverride = _ => sourceForLoader.Token;
-            var loader = new ReturnKeyLoader<string>(baseStepMS, tokenOverride, tokenOverride);
+            var loader = new ReturnKeyLoader<string>(loadTimeMS, tokenOverride, tokenOverride);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             var results = new ConcurrentDictionary<int, string>();
 
@@ -285,7 +285,7 @@ namespace FiftyOne.Caching.Tests
             firstTokenCancelled.Wait(2 * GATE_TIMEOUT_MS);
             Assert.IsTrue(
                 firstTokenCancelled.IsSet,
-                $"{nameof(firstTokenCancelled)} still not set after.");
+                $"{nameof(firstTokenCancelled)} still not set.");
 
 
             // Assert
