@@ -127,14 +127,14 @@ namespace FiftyOne.Caching.Tests.Loaders
                     }
                     lock (_countersLock)
                     {
-                        if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
-                        {
-                            ++_completeWaits;
-                        }
                         if (tokenForLoading.IsCancellationRequested)
                         {
                             ++_cancels;
                             throw new OperationCanceledException();
+                        }
+                        if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
+                        {
+                            ++_completeWaits;
                         }
                     }
                 }
