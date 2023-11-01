@@ -20,6 +20,7 @@
  * such notice(s) shall fulfill the requirements of that article.
  * ********************************************************************* */
 
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -32,19 +33,29 @@ namespace FiftyOne.Caching.Tests.Loaders
     {
         private readonly int _delayMillis;
 
-        private volatile int _calls = 0;
+        private int _calls = 0;
 
-        private volatile int _cancels = 0;
+        private int _taskCalls = 0;
 
-        private volatile int _completeWaits = 0;
+        private int _cancels = 0;
 
-        private volatile bool _runWithToken;
+        private int _completeWaits = 0;
 
-        public int Calls => _calls;
+        private readonly object _countersLock = new object();
 
-        public int Cancels => _cancels;
+        public int Calls { get { lock (_countersLock) { return _calls; } } }
 
-        public int CompleteWaits => _completeWaits;
+        public int TaskCalls { get { lock (_countersLock) { return _taskCalls; } } }
+
+        public int Cancels { get { lock (_countersLock) { return _cancels; } } }
+
+        public int CompleteWaits { get { lock (_countersLock) { return _completeWaits; } } }
+
+        private readonly Func<CancellationToken, CancellationToken> _taskCancellationTokenProvider;
+
+        private readonly Func<CancellationToken, CancellationToken> _loopCancellationTokenProvider;
+
+        public event Action<TKey> OnTaskStarted;
 
         public TrackingLoaderBase() : this(0)
         {
@@ -55,42 +66,88 @@ namespace FiftyOne.Caching.Tests.Loaders
         {
         }
 
-        public TrackingLoaderBase(int delayMillis, bool runWithToken)
+        /// <param name="delayMillis">
+        /// Delay before result is returned in ms.
+        /// </param>
+        /// <param name="runWithToken">
+        /// Whether the canellation of the token
+        /// should cancel a task (true)
+        /// or the internal loop operation (false).
+        /// </param>
+        public TrackingLoaderBase(int delayMillis, bool runWithToken) :
+            this(
+                delayMillis,
+                runWithToken ? null : static t => new CancellationToken(),
+                runWithToken ? static t => new CancellationToken() : null)
+        { 
+        }
+
+        /// <param name="delayMillis">
+        /// Delay before result is returned in ms.
+        /// </param>
+        /// <param name="taskCancellationTokenProvider">
+        /// Transforms a token to be passed for task cancellation.
+        /// If is `null` or returns `null`, the token from `Load` is used.
+        /// </param>
+        /// <param name="loopCancellationTokenProvider">
+        /// Transforms a token to be passed for a loop to track.
+        /// If is `null` or returns `null`, the token from `Load` is used.
+        /// </param>
+        public TrackingLoaderBase(
+            int delayMillis, 
+            Func<CancellationToken, CancellationToken> taskCancellationTokenProvider,
+            Func<CancellationToken, CancellationToken> loopCancellationTokenProvider)
         {
             _delayMillis = delayMillis;
-            _runWithToken = runWithToken;
+            _taskCancellationTokenProvider = taskCancellationTokenProvider;
+            _loopCancellationTokenProvider = loopCancellationTokenProvider;
         }
 
         public Task<TValue> Load(TKey key, CancellationToken token)
         {
-            Interlocked.Increment(ref _calls);
+            lock (_countersLock) {
+                ++_calls;
+            }
+            var tokenForTask = _taskCancellationTokenProvider?.Invoke(token) ?? token;
+            var tokenForLoop = _loopCancellationTokenProvider?.Invoke(token) ?? token;
             return Task.Run(() =>
             {
+                lock (_countersLock)
+                {
+                    ++_taskCalls;
+                }
+                OnTaskStarted?.Invoke(key);
                 if (_delayMillis > 0)
                 {
                     var start = DateTime.Now;
                     while (DateTime.Now <= start.AddMilliseconds(_delayMillis) &&
-                        token.IsCancellationRequested == false)
+                        tokenForLoop.IsCancellationRequested == false)
                     {
                         Thread.Sleep(1);
                     }
-                    if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
+                    lock (_countersLock)
                     {
-                        Interlocked.Increment(ref _completeWaits);
-                    }
-                    if (token.IsCancellationRequested)
-                    {
-                        Interlocked.Increment(ref _cancels);
-                        throw new OperationCanceledException();
+                        if (tokenForLoop.IsCancellationRequested)
+                        {
+                            ++_cancels;
+                            throw new OperationCanceledException();
+                        }
+                        if (DateTime.Now >= start.AddMilliseconds(_delayMillis))
+                        {
+                            ++_completeWaits;
+                        }
                     }
                 }
                 return GetValue(key);
-            }, _runWithToken ? token : new CancellationToken());
+            }, tokenForTask);
         }
 
         public TValue Load(TKey key)
         {
-            Interlocked.Increment(ref _calls);
+            lock (_countersLock)
+            {
+                ++_calls;
+            }
             if (_delayMillis > 0)
             {
                 var start = DateTime.Now;

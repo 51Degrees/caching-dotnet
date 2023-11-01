@@ -28,7 +28,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -70,6 +69,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -96,6 +96,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -123,6 +124,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -151,6 +153,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsNotNull(result);
             Assert.AreEqual(value, result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -163,11 +166,37 @@ namespace FiftyOne.Caching.Tests
         [TestMethod]
         public void LoadingDictionary_GetConcurrentHits()
         {
+            LoadingDictionary<string, string> dict = null;
+            LoadingDictionary_GetConcurrentHits_Internal(loader => {
+                dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+                return (k, t) => dict[k, t];
+            }, _ => 1);
+            Assert.AreEqual(1, dict.Keys.Count());
+        }
+
+        /// <summary>
+        /// Test that when multiple threads call the get method with the same
+        /// key, where the value is not already loaded, that the load method
+        /// is the same amount of times. Proof of differences.
+        /// </summary>
+        [TestMethod]
+        public void LoadingDictionary_GetConcurrentHits_PlainDict()
+        {
+            LoadingDictionary_GetConcurrentHits_Internal(loader => {
+                var dict = new ConcurrentDictionary<string, string>();
+                return (k, t) => dict.GetOrAdd(k, loader.Load(k, t).Result);
+            }, n => n);
+        }
+
+        private void LoadingDictionary_GetConcurrentHits_Internal(
+            Func<ReturnKeyLoader<string>, Func<string, CancellationToken, string>> getterBuilder,
+            Func<int, int> expectedCallsCalculator)
+        {
             // Arrange
 
             var value = "teststring";
             var loader = new ReturnKeyLoader<string>();
-            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            var dictGetter = getterBuilder(loader);
             var results = new ConcurrentDictionary<int, string>();
             var count = 10;
 
@@ -175,7 +204,7 @@ namespace FiftyOne.Caching.Tests
 
             Parallel.For(0, count, (i) =>
             {
-                results[i] = dict[value, _token.Token];
+                results[i] = dictGetter(value, _token.Token);
             });
 
             // Assert
@@ -184,8 +213,91 @@ namespace FiftyOne.Caching.Tests
             {
                 Assert.AreEqual(value, result.Value);
             }
+
+            var expectedCalls = expectedCallsCalculator(count);
+            Assert.AreEqual(expectedCalls, loader.Calls);
+            Assert.AreEqual(expectedCalls, loader.TaskCalls);
+        }
+
+        [TestMethod]
+        public void LoadingDictionary_GetConcurrentHits_MidLoad()
+        {
+            // Arrange
+
+            const int loadTimeMS = 10;
+            var value = "teststring";
+            const int GATE_TIMEOUT_MS = 5000;
+            var sourceForLoader = new CancellationTokenSource();
+            Func<CancellationToken, CancellationToken> tokenOverride = _ => sourceForLoader.Token;
+            var loader = new ReturnKeyLoader<string>(loadTimeMS, tokenOverride, tokenOverride);
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+            var results = new ConcurrentDictionary<int, string>();
+
+            // Act
+
+            Func<string, Func<string>> BuildGetValueFunc = s =>
+            {
+                var t = _token.Token;
+                return () =>
+                {
+                    Console.WriteLine($"[{s}] Trying to get value...");
+                    try
+                    {
+                        var v = dict[value, t];
+                        Console.WriteLine($"[{s}] Value is '{v}'");
+                        return v;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[{s}] Failed to get value: {ex}");
+                        throw;
+                    }
+                };
+            };
+
+            var firstSource = _token;
+            Task<string> secondReaderTask = null;
+            var firstTokenCancelled = new ManualResetEventSlim(false);
+            loader.OnTaskStarted += _ => {
+                Console.WriteLine("Loader task started.");
+                var secondReaderAwoke = new ManualResetEventSlim(false);
+                secondReaderTask = Task.Run(() =>
+                {
+                    Console.WriteLine("Second reader task started.");
+                    secondReaderAwoke.Set();
+                    _token = new CancellationTokenSource();
+                    return BuildGetValueFunc("B")();
+                });
+
+                secondReaderAwoke.Wait(GATE_TIMEOUT_MS);
+                Assert.IsTrue(
+                    secondReaderAwoke.IsSet,
+                    $"{nameof(secondReaderAwoke)} still not set.");
+
+                firstSource.Cancel();
+                firstTokenCancelled.Set();
+                Console.WriteLine("First reader task cancelled.");
+            };
+
+            var firstCallTask = Task.Run(BuildGetValueFunc("A"));
+            firstTokenCancelled.Wait(2 * GATE_TIMEOUT_MS);
+            Assert.IsTrue(
+                firstTokenCancelled.IsSet,
+                $"{nameof(firstTokenCancelled)} still not set.");
+
+
+            // Assert
+
+            Assert.IsNotNull(secondReaderTask);
+            Assert.ThrowsException<AggregateException>(() => firstCallTask.Result);
+            Assert.AreEqual(value, secondReaderTask.Result);
+
+            Assert.IsTrue(
+                firstSource.IsCancellationRequested, 
+                $"{nameof(firstSource)} was never cancelled!");
+
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual(1, dict.Keys.Count());
+            Assert.AreEqual(1, loader.TaskCalls);
         }
 
         /// <summary>
@@ -217,6 +329,7 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(i.ToString(), results[i]);
             }
             Assert.AreEqual(10, loader.Calls);
+            Assert.AreEqual(10, loader.TaskCalls);
             Assert.AreEqual(10, dict.Keys.Count());
         }
 
@@ -256,6 +369,7 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(value, result.Value);
             }
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(1, dict.Keys.Count());
         }
 
@@ -292,6 +406,7 @@ namespace FiftyOne.Caching.Tests
                 Assert.AreEqual(i.ToString(), results[i]);
             }
             Assert.AreEqual(10, loader.Calls);
+            Assert.AreEqual(10, loader.TaskCalls);
             Assert.AreEqual(10, dict.Keys.Count());
         }
 
@@ -375,8 +490,8 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict[value, _token.Token]);
-            _token.Cancel();
             try
             {
                 getter.Wait(millis * 2);
@@ -392,6 +507,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(1, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -429,6 +546,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -453,8 +572,8 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
-            _token.Cancel();
             try
             {
                 getter.Wait(millis * 2);
@@ -470,6 +589,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(1, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -507,6 +628,8 @@ namespace FiftyOne.Caching.Tests
 
             // Assert
 
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -542,6 +665,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(0, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(values.Count, dict.Keys.Count());
         }
 
@@ -576,6 +700,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(0, loader.Calls);
+            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(values.Count, dict.Keys.Count());
         }
 
@@ -608,6 +733,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual("four", result);
             Assert.AreEqual(values.Count + 1, dict.Keys.Count());
         }
@@ -641,6 +767,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.IsTrue(success);
             Assert.AreEqual("four", result);
             Assert.AreEqual(values.Count + 1, dict.Keys.Count());
@@ -665,10 +792,10 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             for (int i = 0; i < count; i++)
             {
                 var getter = Task.Run(() => _ = dict[value, _token.Token]);
-                _token.Cancel();
 
                 try
                 {
@@ -687,6 +814,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(count, loader.Calls);
+            Assert.AreEqual(count, loader.TaskCalls);
             Assert.AreEqual(count, loader.Cancels);
         }
 
@@ -740,10 +868,10 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             for (int i = 0; i < count; i++)
             {
                 var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
-                _token.Cancel();
 
                 Assert.ThrowsException<AggregateException>(() =>
                 {
@@ -756,6 +884,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(count, loader.Calls);
+            Assert.AreEqual(count, loader.TaskCalls);
             Assert.AreEqual(count, loader.Cancels);
         }
 
@@ -802,11 +931,14 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict[value, _token.Token]);
-            _token.Cancel();
             try
             {
                 getter.Wait(1000);
+                Assert.IsTrue(
+                    _token.IsCancellationRequested,
+                    $"{nameof(loader.OnTaskStarted)} has not cancelled the token source.");
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
@@ -819,6 +951,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
 
             // Cleanup
 
@@ -839,11 +972,14 @@ namespace FiftyOne.Caching.Tests
 
             // Act
 
+            loader.OnTaskStarted += _ => _token.Cancel();
             var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
-            _token.Cancel();
             try
             {
                 getter.Wait(1000);
+                Assert.IsTrue(
+                    _token.IsCancellationRequested, 
+                    $"{nameof(loader.OnTaskStarted)} has not cancelled the token source.");
                 Assert.Fail(
                     "The prior cancel of the token should prevent getting here");
             }
@@ -856,6 +992,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
 
             // Cleanup
 
@@ -905,6 +1042,7 @@ namespace FiftyOne.Caching.Tests
             Assert.IsTrue(success);
             Assert.IsNull(result);
             Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
         }
     }
 }

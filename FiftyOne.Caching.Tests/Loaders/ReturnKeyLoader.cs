@@ -52,6 +52,14 @@ namespace FiftyOne.Caching.Tests.Loaders
         {
         }
 
+        public ReturnKeyLoader(
+            int delayMillis,
+            Func<CancellationToken, CancellationToken> taskCancellationTokenProvider,
+            Func<CancellationToken, CancellationToken> loopCancellationTokenProvider) :
+            base(delayMillis, taskCancellationTokenProvider, loopCancellationTokenProvider)
+        {
+        }
+
         protected override T GetValue(T key)
         {
             return key;
