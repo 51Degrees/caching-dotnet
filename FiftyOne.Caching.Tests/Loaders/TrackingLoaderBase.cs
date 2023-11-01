@@ -51,9 +51,9 @@ namespace FiftyOne.Caching.Tests.Loaders
 
         public int CompleteWaits { get { lock (_countersLock) { return _completeWaits; } } }
 
-        private readonly Func<CancellationToken, CancellationToken> _tokenForTask;
+        private readonly Func<CancellationToken, CancellationToken> _taskCancellationTokenProvider;
 
-        private readonly Func<CancellationToken, CancellationToken> _tokenForLoading;
+        private readonly Func<CancellationToken, CancellationToken> _loopCancellationTokenProvider;
 
         public event Action<TKey> OnTaskStarted;
 
@@ -85,22 +85,22 @@ namespace FiftyOne.Caching.Tests.Loaders
         /// <param name="delayMillis">
         /// Delay before result is returned in ms.
         /// </param>
-        /// <param name="tokenForTask">
+        /// <param name="taskCancellationTokenProvider">
         /// Transforms a token to be passed for task cancellation.
         /// If is `null` or returns `null`, the token from `Load` is used.
         /// </param>
-        /// <param name="tokenForLoading">
+        /// <param name="loopCancellationTokenProvider">
         /// Transforms a token to be passed for a loop to track.
         /// If is `null` or returns `null`, the token from `Load` is used.
         /// </param>
         public TrackingLoaderBase(
             int delayMillis, 
-            Func<CancellationToken, CancellationToken> tokenForTask,
-            Func<CancellationToken, CancellationToken> tokenForLoading)
+            Func<CancellationToken, CancellationToken> taskCancellationTokenProvider,
+            Func<CancellationToken, CancellationToken> loopCancellationTokenProvider)
         {
             _delayMillis = delayMillis;
-            _tokenForTask = tokenForTask;
-            _tokenForLoading = tokenForLoading;
+            _taskCancellationTokenProvider = taskCancellationTokenProvider;
+            _loopCancellationTokenProvider = loopCancellationTokenProvider;
         }
 
         public Task<TValue> Load(TKey key, CancellationToken token)
@@ -108,8 +108,8 @@ namespace FiftyOne.Caching.Tests.Loaders
             lock (_countersLock) {
                 ++_calls;
             }
-            var tokenForTask = _tokenForTask?.Invoke(token) ?? token;
-            var tokenForLoading = _tokenForLoading?.Invoke(token) ?? token;
+            var tokenForTask = _taskCancellationTokenProvider?.Invoke(token) ?? token;
+            var tokenForLoop = _loopCancellationTokenProvider?.Invoke(token) ?? token;
             return Task.Run(() =>
             {
                 lock (_countersLock)
@@ -121,13 +121,13 @@ namespace FiftyOne.Caching.Tests.Loaders
                 {
                     var start = DateTime.Now;
                     while (DateTime.Now <= start.AddMilliseconds(_delayMillis) &&
-                        tokenForLoading.IsCancellationRequested == false)
+                        tokenForLoop.IsCancellationRequested == false)
                     {
                         Thread.Sleep(1);
                     }
                     lock (_countersLock)
                     {
-                        if (tokenForLoading.IsCancellationRequested)
+                        if (tokenForLoop.IsCancellationRequested)
                         {
                             ++_cancels;
                             throw new OperationCanceledException();
