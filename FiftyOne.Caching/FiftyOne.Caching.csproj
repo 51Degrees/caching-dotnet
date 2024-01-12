@@ -9,7 +9,7 @@
 	<PackageId>FiftyOne.Caching</PackageId>
 	<Title>Shared library containing caching functionality used by 51Degrees products</Title>
 	<PackageDescription>The 51Degrees caching library contains shared functionality and interfaces for various caching implementations.</PackageDescription>
-	<Authors>51D_Steve;Ben51Degrees;Joseph51Degrees</Authors>
+	<Authors>51Degrees Engineering</Authors>
 	<PackageLicenseExpression>EUPL-1.2</PackageLicenseExpression>
 	<PackageIconUrl>https://51degrees.com/portals/0/Logos/Square%20Logo.png?width=64</PackageIconUrl>
 	<Copyright>51Degrees Mobile Experts Limited</Copyright>
