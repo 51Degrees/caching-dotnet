@@ -15,6 +15,7 @@
 	<Copyright>51Degrees Mobile Experts Limited</Copyright>
 	<PackageTags>51degrees,cache,caching,lru</PackageTags>
 	<RepositoryUrl>https://github.com/51Degrees/caching-dotnet</RepositoryUrl>
+	<PackageProjectUrl>https://51degrees.com</PackageProjectUrl>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
