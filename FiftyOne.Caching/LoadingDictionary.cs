@@ -325,14 +325,15 @@ namespace FiftyOne.Caching
             }
             catch(Exception ex)
             {
+
+                // If the operation has been cancelled, then throw this
+                // exception to the caller.
+                cancellationToken.ThrowIfCancellationRequested();
                 // The value is invalid (and may not have an exception in
                 // the Task) so must be removed so that future requests so
                 // that future requests get a new value instead of returning
                 // the invalid one.
                 Remove(key);
-                // If the operation has been cancelled, then throw this
-                // exception to the caller.
-                cancellationToken.ThrowIfCancellationRequested();
                 // If the operation was not cancelled, but did not succeed,
                 // return a KeyNotFoundException with the inner exception
                 // being the exception thrown by the Task (if any).
@@ -446,14 +447,14 @@ namespace FiftyOne.Caching
             {
                 result = _dictionary.GetOrAdd(
                     key,
-                    k => Load(k, cancellationToken));
+                    k => Load(k, CancellationToken.None));
                 result.Value.Wait(cancellationToken);
                 return result.Value;
             }
             catch (Exception ex)
             {
-                Remove(key);
                 cancellationToken.ThrowIfCancellationRequested();
+                Remove(key);
                 ThrowKeyNotFoundException(key, ex);
                 // Note this never returns. It is to satisfy the compiler.
                 return Task.FromResult<TValue>(null);
