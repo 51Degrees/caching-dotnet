@@ -28,6 +28,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -510,16 +511,14 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
-            Assert.AreEqual(1, loader.Cancels);
+            Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
         }
 
         /// <summary>
         /// Test that calling the get method with a cancellation token that
-        /// is already cancelled results in it returning immediately, and
-        /// does not even start the task.
-        /// Also check that the cancellation was passed to the loader properly,
-        /// and that the correct exception is thrown.
+        /// is already cancelled results in it returning immediately.
+        /// Also check that the correct exception is thrown.
         /// </summary>
         [TestMethod]
         public void LoadingDictionary_GetAlreadyCancelled()
@@ -547,7 +546,7 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual(0, loader.TaskCalls);
+            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -556,8 +555,7 @@ namespace FiftyOne.Caching.Tests
         /// <summary>
         /// Test that calling the cancellation token results in the TryGet method
         /// returning immediately, and not waiting for the Task to complete.
-        /// Also check that the cancellation was passed to the loader properly,
-        /// and that the correct exception is thrown.
+        /// Also check that the correct exception is thrown.
         /// </summary>
         [TestMethod]
         public void LoadingDictionary_TryGetCancelled()
@@ -592,14 +590,13 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
-            Assert.AreEqual(1, loader.Cancels);
+            Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
         }
 
         /// <summary>
         /// Test that calling the TryGet method with a cancellation token that
-        /// is already cancelled results in it returning immediately, and
-        /// does not even start the task.
+        /// is already cancelled results in it returning immediately.
         /// Also check that the cancellation was passed to the loader properly,
         /// and that the correct exception is thrown.
         /// </summary>
@@ -629,7 +626,6 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual(0, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
@@ -775,11 +771,10 @@ namespace FiftyOne.Caching.Tests
 
         /// <summary>
         /// Test that if a call to get is canceled, that the result is
-        /// removed from the dictionary on subsequent requests 
-        /// instead of returning the previously failed result.
+        /// not removed from the dictionary on subsequent requests.
         /// </summary>
         [TestMethod]
-        public void LoadingDictionary_GetCanceledIsNotReused()
+        public void LoadingDictionary_GetCanceledIsReused()
         {
             // Arrange
 
@@ -788,34 +783,29 @@ namespace FiftyOne.Caching.Tests
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
             Exception exception = null;
-            var count = 2;
 
             // Act
 
             loader.OnTaskStarted += _ => _token.Cancel();
-            for (int i = 0; i < count; i++)
+            var getter = Task.Run(() => _ = dict[value, _token.Token]);
+            try
             {
-                var getter = Task.Run(() => _ = dict[value, _token.Token]);
-
-                try
-                {
-                    _ = getter.Result;
-                }
-                catch (AggregateException e)
-                {
-                    exception = e.InnerException;
-                }
-                Assert.IsNotNull(exception);
-                exception = null;
-                _token = new CancellationTokenSource();
-                Thread.Sleep(100);
+                _ = getter.Result;
             }
+            catch (AggregateException e)
+            {
+                exception = e.InnerException;
+            }
+            Assert.IsNotNull(exception);
 
+            _token = new CancellationTokenSource();
+            Thread.Sleep(100);
+            Assert.IsNotNull(dict[value, _token.Token]);
             // Assert
 
-            Assert.AreEqual(count, loader.Calls);
-            Assert.AreEqual(count, loader.TaskCalls);
-            Assert.AreEqual(count, loader.Cancels);
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
+            Assert.AreEqual(0, loader.Cancels);
         }
 
         /// <summary>
@@ -851,12 +841,12 @@ namespace FiftyOne.Caching.Tests
         }
 
         /// <summary>
-        /// Test that if a call to TryGet is canceled, that the result is
-        /// removed from the dictionary, and subsequent requests try again
-        /// instead of returning the previously failed result.
+        /// Test that if a call to TryGet is canceled, that the result is not
+        /// removed from the dictionary, and subsequent requests use the previously
+        /// started task.
         /// </summary>
         [TestMethod]
-        public void LoadingDictionary_TryGetCanceledIsRemoved()
+        public void LoadingDictionary_TryGetCanceledIsNotRemoved()
         {
             // Arrange
 
@@ -864,28 +854,24 @@ namespace FiftyOne.Caching.Tests
             var millis = 5000;
             var loader = new ReturnKeyLoader<string>(millis);
             var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
-            var count = 2;
 
             // Act
 
             loader.OnTaskStarted += _ => _token.Cancel();
-            for (int i = 0; i < count; i++)
+            var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
+            Assert.ThrowsException<AggregateException>(() =>
             {
-                var getter = Task.Run(() => dict.TryGet(value, _token.Token, out _));
+                _ = getter.Result;
+            });
 
-                Assert.ThrowsException<AggregateException>(() =>
-                {
-                    _ = getter.Result;
-                });
-
-                _token = new CancellationTokenSource();
-            }
+            _token = new CancellationTokenSource();
+            Assert.IsTrue(dict.TryGet(value, _token.Token, out _));
 
             // Assert
 
-            Assert.AreEqual(count, loader.Calls);
-            Assert.AreEqual(count, loader.TaskCalls);
-            Assert.AreEqual(count, loader.Cancels);
+            Assert.AreEqual(1, loader.Calls);
+            Assert.AreEqual(1, loader.TaskCalls);
+            Assert.AreEqual(0, loader.Cancels);
         }
 
         /// <summary>

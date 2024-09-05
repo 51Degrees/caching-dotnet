@@ -85,6 +85,11 @@ namespace FiftyOne.Caching
         private readonly ILogger<LoadingDictionary<TKey, TValue>> _logger;
 
         /// <summary>
+        /// Timeout to use for internal load tasks.
+        /// </summary>
+        private readonly TimeSpan _taskTimeout;
+
+        /// <summary>
         /// Constructor.
         /// </summary>
         /// <param name="logger">
@@ -103,17 +108,23 @@ namespace FiftyOne.Caching
         /// <param name="capacity">
         /// The initial number of elements that the can contain.
         /// </param>
+        /// <param name="taskTimeoutSeconds">
+        /// Number of seconds to let internal tasks run for before cancelling completely.
+        /// This is separate from the cancelation of a get.
+        /// </param>
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader,
             ICollection<KeyValuePair<TKey, TValue>> initial,
             int concurrencyLevel,
-            int capacity)
+            int capacity,
+            int taskTimeoutSeconds = 30)
             : this(
                   logger,
                   loader,
                   new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(concurrencyLevel, capacity),
-                  initial)
+                  initial,
+                  taskTimeoutSeconds)
         { }
 
         /// <summary>
@@ -128,15 +139,21 @@ namespace FiftyOne.Caching
         /// <param name="initial">
         /// Collection of initial values to pre-populate the dictionary with.
         /// </param>
+        /// <param name="taskTimeoutSeconds">
+        /// Number of seconds to let internal tasks run for before cancelling completely.
+        /// This is separate from the cancelation of a get.
+        /// </param>
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader,
-            ICollection<KeyValuePair<TKey, TValue>> initial)
+            ICollection<KeyValuePair<TKey, TValue>> initial,
+            int taskTimeoutSeconds = 30)
             : this(
                   logger,
                   loader,
                   new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(),
-                  initial)
+                  initial,
+                  taskTimeoutSeconds)
         {
         }
 
@@ -189,11 +206,13 @@ namespace FiftyOne.Caching
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader,
             ConcurrentDictionary<TKey, Lazy<Task<TValue>>> dictionary,
-            ICollection<KeyValuePair<TKey, TValue>> initial = null)
+            ICollection<KeyValuePair<TKey, TValue>> initial = null,
+            int taskTimeoutSeconds = 30)
         {
             _logger = logger;
             _dictionary = dictionary;
             _loader = loader;
+            _taskTimeout = TimeSpan.FromSeconds(taskTimeoutSeconds);
             if (initial != null)
             {
                 foreach (var pair in initial)
@@ -321,18 +340,22 @@ namespace FiftyOne.Caching
             // First try at getting the task.
             try
             {
-                return await GetAndWait(key, cancellationToken);
+                return await GetAndWait(
+                    key,
+                    cancellationToken,
+                    new CancellationTokenSource(_taskTimeout).Token);
             }
             catch(Exception ex)
             {
+
+                // If the operation has been cancelled, then throw this
+                // exception to the caller.
+                cancellationToken.ThrowIfCancellationRequested();
                 // The value is invalid (and may not have an exception in
                 // the Task) so must be removed so that future requests so
                 // that future requests get a new value instead of returning
                 // the invalid one.
                 Remove(key);
-                // If the operation has been cancelled, then throw this
-                // exception to the caller.
-                cancellationToken.ThrowIfCancellationRequested();
                 // If the operation was not cancelled, but did not succeed,
                 // return a KeyNotFoundException with the inner exception
                 // being the exception thrown by the Task (if any).
@@ -427,8 +450,11 @@ namespace FiftyOne.Caching
         /// <param name="key">
         /// Key to get the value Task for.
         /// </param>
-        /// <param name="cancellationToken">
-        /// Cancellation token to pass to the load method, and the wait method.
+        /// <param name="waitToken">
+        /// Cancellation token to pass to the wait method.
+        /// </param>
+        /// <param name="taskToken">
+        /// Cancellation token to pass to the load method.
         /// </param>
         /// <returns>
         /// New or existing Task which will produce a value for the key.
@@ -439,21 +465,21 @@ namespace FiftyOne.Caching
         /// <exception cref="AggregateException">
         /// If there was an exception thrown from the Task.
         /// </exception>
-        private Task<TValue> GetAndWait(TKey key, CancellationToken cancellationToken)
+        private Task<TValue> GetAndWait(TKey key, CancellationToken waitToken, CancellationToken taskToken)
         {
             Lazy<Task<TValue>> result = null;
             try
             {
                 result = _dictionary.GetOrAdd(
                     key,
-                    k => Load(k, cancellationToken));
-                result.Value.Wait(cancellationToken);
+                    k => Load(k, taskToken));
+                result.Value.Wait(waitToken);
                 return result.Value;
             }
             catch (Exception ex)
             {
+                waitToken.ThrowIfCancellationRequested();
                 Remove(key);
-                cancellationToken.ThrowIfCancellationRequested();
                 ThrowKeyNotFoundException(key, ex);
                 // Note this never returns. It is to satisfy the compiler.
                 return Task.FromResult<TValue>(null);
@@ -471,7 +497,7 @@ namespace FiftyOne.Caching
         {
             if (_dictionary.TryRemove(key, out _) == false)
             {
-                _logger.LogError($"Failed to remove entry for key '{key}'.");
+                _logger.LogInformation($"Failed to remove entry for key '{key}'.");
             }
         }
     }
