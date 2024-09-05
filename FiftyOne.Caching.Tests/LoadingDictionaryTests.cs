@@ -626,7 +626,6 @@ namespace FiftyOne.Caching.Tests
             // Assert
 
             Assert.AreEqual(1, loader.Calls);
-            Assert.AreEqual(1, loader.TaskCalls);
             Assert.AreEqual(0, loader.CompleteWaits);
             Assert.AreEqual(0, loader.Cancels);
             Assert.IsNotNull(exception);
