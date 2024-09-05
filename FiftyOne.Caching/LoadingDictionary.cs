@@ -497,7 +497,7 @@ namespace FiftyOne.Caching
         {
             if (_dictionary.TryRemove(key, out _) == false)
             {
-                _logger.LogError($"Failed to remove entry for key '{key}'.");
+                _logger.LogInformation($"Failed to remove entry for key '{key}'.");
             }
         }
     }
