@@ -1,6 +1,6 @@
 [  
     {
-        "Image": "ubuntu-latest",
+        "Image": "ubuntu-22.04",
         "Name": "Ubuntu_Any_CPU_Release",
         "Configuration": "Release",
         "Arch": "Any CPU",
@@ -8,7 +8,7 @@
         "BuildMethod": "dotnet"
     },
     {
-        "Image": "ubuntu-latest",
+        "Image": "ubuntu-22.04",
         "Name": "Ubuntu_Any_CPU_Debug",
         "Configuration": "Debug",
         "Arch": "Any CPU",
