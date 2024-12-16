@@ -108,8 +108,8 @@ namespace FiftyOne.Caching
         /// <param name="capacity">
         /// The initial number of elements that the can contain.
         /// </param>
-        /// <param name="taskTimeoutSeconds">
-        /// Number of seconds to let internal tasks run for before cancelling completely.
+        /// <param name="taskTimeoutDuration">
+        /// Duration to let internal tasks run for before cancelling completely.
         /// This is separate from the cancelation of a get.
         /// </param>
         public LoadingDictionary(
@@ -118,13 +118,13 @@ namespace FiftyOne.Caching
             ICollection<KeyValuePair<TKey, TValue>> initial,
             int concurrencyLevel,
             int capacity,
-            int taskTimeoutSeconds = 30)
+            TimeSpan? taskTimeoutDuration = null)
             : this(
                   logger,
                   loader,
                   new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(concurrencyLevel, capacity),
                   initial,
-                  taskTimeoutSeconds)
+                  taskTimeoutDuration)
         { }
 
         /// <summary>
@@ -139,21 +139,21 @@ namespace FiftyOne.Caching
         /// <param name="initial">
         /// Collection of initial values to pre-populate the dictionary with.
         /// </param>
-        /// <param name="taskTimeoutSeconds">
-        /// Number of seconds to let internal tasks run for before cancelling completely.
+        /// <param name="taskTimeoutDuration">
+        /// Duration to let internal tasks run for before cancelling completely.
         /// This is separate from the cancelation of a get.
         /// </param>
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
             IValueTaskLoader<TKey, TValue> loader,
             ICollection<KeyValuePair<TKey, TValue>> initial,
-            int taskTimeoutSeconds = 30)
+            TimeSpan? taskTimeoutDuration = null)
             : this(
                   logger,
                   loader,
                   new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>(),
                   initial,
-                  taskTimeoutSeconds)
+                  taskTimeoutDuration)
         {
         }
 
@@ -207,12 +207,14 @@ namespace FiftyOne.Caching
             IValueTaskLoader<TKey, TValue> loader,
             ConcurrentDictionary<TKey, Lazy<Task<TValue>>> dictionary,
             ICollection<KeyValuePair<TKey, TValue>> initial = null,
-            int taskTimeoutSeconds = 30)
+            TimeSpan? taskTimeoutDuration = null)
         {
             _logger = logger;
             _dictionary = dictionary;
             _loader = loader;
-            _taskTimeout = TimeSpan.FromSeconds(taskTimeoutSeconds);
+            // set default timeout to 30 seconds
+            _taskTimeout = taskTimeoutDuration ?? TimeSpan.FromSeconds(30);
+
             if (initial != null)
             {
                 foreach (var pair in initial)
