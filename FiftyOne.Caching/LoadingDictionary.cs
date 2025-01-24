@@ -24,6 +24,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,7 +32,7 @@ namespace FiftyOne.Caching
 {
     /// <summary>
     /// Implementation of <see cref="ILoadingDictionary{TKey, TValue}"/>.
-    /// This implementation fulfills the expectations described in the
+    /// This implementation fulfils the expectations described in the
     /// interface description.
     /// As per the source (https://referencesource.microsoft.com/#mscorlib/system/Collections/Concurrent/ConcurrentDictionary.cs,2f8bcdfbad10304f)
     /// <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/>
@@ -41,7 +42,7 @@ namespace FiftyOne.Caching
     /// It is the responsibility of the loader to handle cancellation of
     /// its Task when instructed to by the token. If a thread is left in
     /// an unresponsive state, it will result in failed gets for that key
-    /// until the Task responds and can be removed from the dictinoary.
+    /// until the Task responds and can be removed from the dictionary.
     /// 
     /// Details of the use of <see cref="Lazy"/>:
     /// Consider the scenario where two get requests are made at the same
@@ -89,6 +90,7 @@ namespace FiftyOne.Caching
         /// </summary>
         private readonly TimeSpan _taskTimeout;
 
+        #region constructors
         /// <summary>
         /// Constructor.
         /// </summary>
@@ -110,7 +112,7 @@ namespace FiftyOne.Caching
         /// </param>
         /// <param name="taskTimeoutDuration">
         /// Duration to let internal tasks run for before cancelling completely.
-        /// This is separate from the cancelation of a get.
+        /// This is separate from the cancellation of a get.
         /// </param>
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
@@ -141,7 +143,7 @@ namespace FiftyOne.Caching
         /// </param>
         /// <param name="taskTimeoutDuration">
         /// Duration to let internal tasks run for before cancelling completely.
-        /// This is separate from the cancelation of a get.
+        /// This is separate from the cancellation of a get.
         /// </param>
         public LoadingDictionary(
             ILogger<LoadingDictionary<TKey, TValue>> logger,
@@ -223,6 +225,7 @@ namespace FiftyOne.Caching
                 }
             }
         }
+        #endregion
 
         /// <summary>
         /// Gets the value associated with the key, either from an existing
@@ -257,10 +260,7 @@ namespace FiftyOne.Caching
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
-        public bool ContainsKey(TKey key)
-        {
-            return _dictionary.ContainsKey(key);
-        }
+        public bool ContainsKey(TKey key) => _dictionary.ContainsKey(key);
 
         /// <summary>
         /// Try to get  the value associated with the key, either from an existing
@@ -280,7 +280,7 @@ namespace FiftyOne.Caching
         /// True if the get was successful, and value was populated.
         /// </returns>
         /// <exception cref="OperationCanceledException">
-        /// If the operation was canceled through the token.
+        /// If the operation was cancelled through the token.
         /// </exception>
         public bool TryGet(
             TKey key, 
@@ -377,11 +377,9 @@ namespace FiftyOne.Caching
         /// True if the task completed, and did not throw any
         /// exceptions.
         /// </returns>
-        private static bool GetIsCompleteSuccess(Task<TValue> task)
-        {
-            return task.Status == TaskStatus.RanToCompletion &&
+        private static bool GetIsCompleteSuccess(Task<TValue> task) => 
+            task.Status == TaskStatus.RanToCompletion &&
                 task.IsFaulted == false;
-        }
 
         /// <summary>
         /// Throw a KeyNotFoundException, including any exceptions thrown
@@ -395,20 +393,14 @@ namespace FiftyOne.Caching
         /// </param>
         private void ThrowKeyNotFoundException(TKey key, Exception ex)
         {
-            // Work out the inner exception removing the aggregate exception
-            // if there is only a single exception in the aggregate.
-            var innerException = ex;
-            if (ex is AggregateException)
-            {
-                if ((ex as AggregateException).InnerExceptions.Count == 1)
-                {
-                    innerException = ex.InnerException;
-                }
-            }
-            else if (innerException.InnerException != null)
-            {
-                innerException = innerException.InnerException;
-            }
+            // If exception is aggregate 
+            var innerException = ex is AggregateException aggregateException && 
+                // and only 1 inner exception
+                aggregateException.InnerExceptions.Count == 1
+                // set inner exception
+                ? aggregateException.InnerException
+                // else set exception
+                : ex.InnerException ?? ex;
 
             throw new KeyNotFoundException(
                 $"An exception occurred in '{_loader.GetType().Name}' while " +
