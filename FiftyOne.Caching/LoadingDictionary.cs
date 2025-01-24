@@ -303,16 +303,26 @@ namespace FiftyOne.Caching
             }
         }
 
-        public async Task<TValue> GetAsync(TKey key, CancellationToken cancellationToken)
+        /// <summary>
+        /// Asynchronously retrieves the value associated with 
+        /// the specified key.If the value is not already loaded, 
+        /// it triggers the loading process.This method will respect 
+        /// the provided cancellation token to cancel the load operation.
+        public Task<TValue> GetAsync(TKey key, CancellationToken callerToken)
         {
-            return await GetInternal(key, cancellationToken);
+            return GetAndWait(key, callerToken);
         }
 
-        private TValue Get(TKey key, CancellationToken cancellationToken)
+        /// <summary>
+        /// Synchronously retrieves the value associated with the specified key.
+        /// This method blocks the calling thread until the value is available.
+        /// If the operation fails or is cancelled, the exception is propagated.
+        /// </summary>
+        private TValue Get(TKey key, CancellationToken callerToken)
         {
             try
             {
-                return GetInternal(key, cancellationToken).Result;
+                return GetAndWait(key, callerToken).Result;
             }
             catch (AggregateException ex)
             {
@@ -327,43 +337,39 @@ namespace FiftyOne.Caching
         /// <param name="key">
         /// Key in the dictionary.
         /// </param>
-        /// <param name="cancellationToken">
+        /// <param name="callerToken">
         /// Token used to cancel the load operation.
         /// </param>
         /// <returns>
         /// Value for the key provided.
         /// </returns>
-        private async Task<TValue> GetInternal(TKey key, CancellationToken cancellationToken)
+        private async Task<TValue> GetAndWait(
+            TKey key,
+            CancellationToken callerToken)
         {
-            if (key == null)
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-            // First try at getting the task.
+            if (key == null) throw new ArgumentNullException(nameof(key));
             try
             {
-                return await GetAndWait(
-                    key,
-                    cancellationToken,
-                    new CancellationTokenSource(_taskTimeout).Token);
+                var result = _dictionary.GetOrAdd(
+                key,
+                k => Load(k, new CancellationTokenSource(_taskTimeout).Token))
+                .Value;
+                result.Wait(callerToken);
+                return result.Result;
+            }
+            catch(OperationCanceledException)
+            {
+                // Caller cancelled the operation.
+                throw;
             }
             catch(Exception ex)
             {
-
-                // If the operation has been cancelled, then throw this
-                // exception to the caller.
-                cancellationToken.ThrowIfCancellationRequested();
-                // The value is invalid (and may not have an exception in
-                // the Task) so must be removed so that future requests so
-                // that future requests get a new value instead of returning
-                // the invalid one.
+                // Loader operation failed 
+                // Remove invalid key.
                 Remove(key);
-                // If the operation was not cancelled, but did not succeed,
-                // return a KeyNotFoundException with the inner exception
-                // being the exception thrown by the Task (if any).
+                // extract and throw exception.
                 ThrowKeyNotFoundException(key, ex);
-                // Note this never returns. It is to satisfy the compiler.
-                return null;
+                throw;
             }
         }
 
@@ -427,58 +433,11 @@ namespace FiftyOne.Caching
         /// <returns>
         /// A new lazily loaded Task to load the value.
         /// </returns>
-        private Lazy<Task<TValue>> Load(TKey key, CancellationToken cancellationToken)
-        {
-            return new Lazy<Task<TValue>>(() => _loader.Load(key, cancellationToken), true);
-        }
-
-        /// <summary>
-        /// Get the Task (either existing, or created from the factory) for the
-        /// key provided, and wait for it to complete. If the cancellation token
-        /// is canceled, the wait is also canceled, so this does not depend on 
-        /// the load method to respect the token.
-        /// If the wait is canceled, then the Task is removed from the internal
-        /// dictionary to avoid it existing there indefinitely (a second attempt
-        /// may succeed, so should be allowed).
-        /// </summary>
-        /// <param name="key">
-        /// Key to get the value Task for.
-        /// </param>
-        /// <param name="waitToken">
-        /// Cancellation token to pass to the wait method.
-        /// </param>
-        /// <param name="taskToken">
-        /// Cancellation token to pass to the load method.
-        /// </param>
-        /// <returns>
-        /// New or existing Task which will produce a value for the key.
-        /// </returns>
-        /// <exception cref="OperationCanceledException">
-        /// If the wait operation was canceled.
-        /// </exception>
-        /// <exception cref="AggregateException">
-        /// If there was an exception thrown from the Task.
-        /// </exception>
-        private Task<TValue> GetAndWait(TKey key, CancellationToken waitToken, CancellationToken taskToken)
-        {
-            Lazy<Task<TValue>> result = null;
-            try
-            {
-                result = _dictionary.GetOrAdd(
-                    key,
-                    k => Load(k, taskToken));
-                result.Value.Wait(waitToken);
-                return result.Value;
-            }
-            catch (Exception ex)
-            {
-                waitToken.ThrowIfCancellationRequested();
-                Remove(key);
-                ThrowKeyNotFoundException(key, ex);
-                // Note this never returns. It is to satisfy the compiler.
-                return Task.FromResult<TValue>(null);
-            }
-        }
+        private Lazy<Task<TValue>> Load(
+            TKey key,
+            CancellationToken cancellationToken) =>
+            new Lazy<Task<TValue>>(
+                () => _loader.Load(key, cancellationToken), true);
 
         /// <summary>
         /// Try to remove the key from the dictionary.
@@ -490,9 +449,7 @@ namespace FiftyOne.Caching
         private void Remove(TKey key)
         {
             if (_dictionary.TryRemove(key, out _) == false)
-            {
                 _logger.LogInformation($"Failed to remove entry for key '{key}'.");
-            }
         }
     }
 }
