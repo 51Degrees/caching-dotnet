@@ -1030,5 +1030,32 @@ namespace FiftyOne.Caching.Tests
             Assert.AreEqual(1, loader.Calls);
             Assert.AreEqual(1, loader.TaskCalls);
         }
+
+        /// <summary>
+        /// Tests that the error returned when the loader throws an error is 
+        /// correctly passed up to the caller.
+        /// </summary>
+        [TestMethod]
+        public async Task LoadingDictionary_LoaderError()
+        {
+            // Arrange
+            var value = "testvalue";
+            var loader = new NetworkErrorLoader<string>();
+            var dict = new LoadingDictionary<string, string>(_logger.Object, loader);
+
+            // Act
+            try
+            {
+                await dict.GetAsync(value, new CancellationToken());
+            }
+            catch (Exception ex)
+            {
+                Assert.IsTrue(ex is KeyNotFoundException);
+                Assert.IsNotNull(ex.InnerException);
+                Assert.IsTrue(ex.InnerException is WebException);
+                Assert.IsTrue(ex.InnerException
+                    .Message.Contains("Network failure occurred"));
+            }
+        }
     }
 }
