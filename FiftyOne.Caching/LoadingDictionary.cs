@@ -270,7 +270,7 @@ namespace FiftyOne.Caching
         /// <param name="key">
         /// Key in the dictionary.
         /// </param>
-        /// <param name="cancellationToken">
+        /// <param name="callerStopToken">
         /// Token used to cancel the load operation.
         /// </param>
         /// <param name="value">
@@ -280,16 +280,16 @@ namespace FiftyOne.Caching
         /// True if the get was successful, and value was populated.
         /// </returns>
         /// <exception cref="OperationCanceledException">
-        /// If the operation was cancelled through the token.
+        /// Thrown if the operation was cancelled by the caller.
         /// </exception>
         public bool TryGet(
             TKey key, 
-            CancellationToken cancellationToken, 
+            CancellationToken callerStopToken, 
             out TValue value)
         {
             try
             {
-                value = Get(key, cancellationToken);
+                value = Get(key, callerStopToken);
                 return true;
             }
             catch (OperationCanceledException)
@@ -331,18 +331,20 @@ namespace FiftyOne.Caching
         }
 
         /// <summary>
-        /// Internal get method used by <see cref="this[TKey, CancellationToken]"/>
-        /// and <see cref="TryGet(TKey, CancellationToken, out TValue)"/>.
+        /// Retrieves the value for the specified key, waiting for the 
+        /// load operation to complete if necessary.
         /// </summary>
-        /// <param name="key">
-        /// Key in the dictionary.
-        /// </param>
-        /// <param name="callerToken">
-        /// Token used to cancel the load operation.
-        /// </param>
-        /// <returns>
-        /// Value for the key provided.
-        /// </returns>
+        /// <param name="key">The key to retrieve the value for.</param>
+        /// <param name="callerToken">Cancellation token to cancel 
+        /// the operation.</param>
+        /// <returns>The value associated with the key.</returns>
+        /// <remarks>
+        /// If the caller token cancels the operation while the load is still 
+        /// in progress, an <see cref="OperationCanceledException"/> is thrown.
+        /// If the load operation fails, the key is removed from the 
+        /// dictionary, and a <see cref="KeyNotFoundException"/> is thrown 
+        /// with the original exception as the inner exception.
+        /// </remarks>
         private async Task<TValue> GetAndWait(
             TKey key,
             CancellationToken callerToken)
@@ -351,23 +353,23 @@ namespace FiftyOne.Caching
             try
             {
                 var result = _dictionary.GetOrAdd(
-                key,
-                k => Load(k, new CancellationTokenSource(_taskTimeout).Token))
-                .Value;
-                result.Wait(callerToken);
+                    key,
+                    k => Load(k, new CancellationTokenSource(_taskTimeout).Token))
+                    .Value;
+                    result.Wait(callerToken);
                 return result.Result;
             }
-            catch(OperationCanceledException)
+            catch (OperationCanceledException)
             {
                 // Caller cancelled the operation.
                 throw;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 // Loader operation failed 
                 // Remove invalid key.
                 Remove(key);
-                // extract and throw exception.
+                // throw exception.
                 ThrowKeyNotFoundException(key, ex);
                 throw;
             }
@@ -384,11 +386,11 @@ namespace FiftyOne.Caching
         /// exceptions.
         /// </returns>
         private static bool GetIsCompleteSuccess(Task<TValue> task) => 
-            task.Status == TaskStatus.RanToCompletion &&
+                task.Status == TaskStatus.RanToCompletion &&
                 task.IsFaulted == false;
 
         /// <summary>
-        /// Throw a KeyNotFoundException, including any exceptions thrown
+        /// Throws a KeyNotFoundException, including any exceptions thrown
         /// within the failed Task.
         /// </summary>
         /// <param name="key">
@@ -399,13 +401,12 @@ namespace FiftyOne.Caching
         /// </param>
         private void ThrowKeyNotFoundException(TKey key, Exception ex)
         {
-            // If exception is aggregate 
+            // If exception is aggregate and only 1 inner exception
+            // then set outer to inner exception
+            // else set exception
             var innerException = ex is AggregateException aggregateException && 
-                // and only 1 inner exception
                 aggregateException.InnerExceptions.Count == 1
-                // set inner exception
                 ? aggregateException.InnerException
-                // else set exception
                 : ex.InnerException ?? ex;
 
             throw new KeyNotFoundException(
