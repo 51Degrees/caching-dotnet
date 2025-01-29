@@ -31,7 +31,7 @@ namespace FiftyOne.Caching.Tests.Loaders
     /// <summary>
     /// Value loader that returns a Task which will not respond to the
     /// cancellation token. Once the test has finished, the Task should
-    /// be canceled using the <see cref="Terminate"/> method.
+    /// be cancelled using the <see cref="Terminate"/> method.
     /// </summary>
     /// <typeparam name="T"></typeparam>
     internal class UnresponsiveLoader<T> : TrackingLoaderBase<T, T>
