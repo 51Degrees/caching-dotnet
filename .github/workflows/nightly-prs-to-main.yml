@@ -1,6 +1,10 @@
 name: Nightly PRs to Main
 
 on:
+  workflow_run:
+    workflows:
+      - Nightly Package Update 
+    types: [completed]
   workflow_dispatch:
   schedule:
     # * is a special character in YAML so quote this string
