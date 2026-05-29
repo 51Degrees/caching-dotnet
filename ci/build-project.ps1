@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$StrongNameKeyBase64,
-    [string]$RepoName,
+    [Parameter(Mandatory)][string]$RepoName,
     [string]$ProjectDir = ".",
     [string]$Name = "Release_x64",
     [string]$Configuration = "Release",
