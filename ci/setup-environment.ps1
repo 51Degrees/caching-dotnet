@@ -6,9 +6,7 @@ param(
     [string]$Arch = "x64",
     [string]$Configuration = "Release",
     [string]$BuildMethod,
-    [string]$StrongNameKeyBase64,
     [hashtable]$Keys
 )
 Write-Output "Setting SUPER_RESOURCE_KEY environmental variable for '$Name'"
 $env:SUPER_RESOURCE_KEY = $Keys.TestResourceKey
-[IO.File]::WriteAllBytes("$PSScriptRoot/../51Degrees.snk", [Convert]::FromBase64String($StrongNameKeyBase64))
