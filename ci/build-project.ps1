@@ -1,12 +1,14 @@
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$RepoName,
+    [Parameter(Mandatory)][string]$StrongNameKeyBase64,
+    [Parameter(Mandatory)][string]$RepoName,
     [string]$ProjectDir = ".",
     [string]$Name = "Release_x64",
     [string]$Configuration = "Release",
     [string]$Arch = "x64",
     [string]$BuildMethod = "msbuild"
 )
+
+[IO.File]::WriteAllBytes("$PSScriptRoot/../51Degrees.snk", [Convert]::FromBase64String($StrongNameKeyBase64))
 
 if ($BuildMethod -eq "dotnet"){
 
