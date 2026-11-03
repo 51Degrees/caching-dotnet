@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This repo has been merged into the monorepo https://github.com/51Degrees/51degrees-dotnet, under `caching/`. Please refer to the new monorepository for issues and PRs. The NuGet packages keep their names and are published from there.
+
 # FiftyOne.Caching
 
 This package contains interfaces and classes relating to caching. There are two major types of cache represented, 'put' caches and 'loading' caches.
